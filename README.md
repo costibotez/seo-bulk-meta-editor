@@ -1,6 +1,6 @@
-# Yoast SEO Bulk Meta Editor
+# Yoast Bulk Meta Editor
 
-Yoast Meta Manager is a WordPress plugin designed to extend the Yoast SEO plugin, enabling users to view and edit meta information from all posts, pages, and custom post types in a single dashboard.
+Yoast Bulk Meta Editor is a WordPress plugin designed to extend the Yoast SEO plugin, enabling users to view and edit meta information from all posts, pages, and custom post types in a single dashboard.
 
 ## Features
 
@@ -10,9 +10,9 @@ Yoast Meta Manager is a WordPress plugin designed to extend the Yoast SEO plugin
 
 ## Installation
 
-1. Upload the `yoast-meta-manager` folder to the `/wp-content/plugins/` directory of your WordPress installation.
+1. Upload the `yoast-bulk-meta-editor` folder to the `/wp-content/plugins/` directory of your WordPress installation.
 2. Activate the plugin through the 'Plugins' menu in WordPress.
-3. Navigate to the 'Tools' menu in the WordPress admin area, then select 'Yoast SEO Bulk Meta Editor'.
+3. Navigate to the 'Tools' menu in the WordPress admin area, then select 'Yoast Bulk Meta Editor'.
 
 ## Usage
 
@@ -22,7 +22,7 @@ Yoast Meta Manager is a WordPress plugin designed to extend the Yoast SEO plugin
 
 ## Support
 
-This plugin is provided as is, with no implied warranties or guarantees of functionality. If you encounter any issues, please [open an issue on GitHub](https://github.com/<YOUR_USERNAME>/yoast-SEO-Bulk-Meta-Editor/issues).
+This plugin is provided as is, with no implied warranties or guarantees of functionality. If you encounter any issues, please [open an issue on GitHub](https://github.com/costibotez/yoast-bulk-meta-editor/issues).
 
 ## Author
 
