@@ -1,0 +1,1 @@
+# Yoast-SEO-Bulk-Meta-Editor
