@@ -1,6 +1,6 @@
-# Yoast Bulk Meta Editor
+# SEO Bulk Meta Editor for Yoast
 
-Yoast Bulk Meta Editor is a WordPress plugin designed to extend the Yoast SEO plugin, enabling users to view and edit meta information from all posts, pages, and custom post types in a single dashboard.
+SEO Bulk Meta Editor is a WordPress plugin designed to extend the Yoast SEO plugin, enabling users to view and edit meta information from all posts, pages, and custom post types in a single dashboard.
 
 ## Features
 
@@ -10,9 +10,9 @@ Yoast Bulk Meta Editor is a WordPress plugin designed to extend the Yoast SEO pl
 
 ## Installation
 
-1. Upload the `yoast-bulk-meta-editor` folder to the `/wp-content/plugins/` directory of your WordPress installation.
+1. Upload the `seo-bulk-meta-editor` folder to the `/wp-content/plugins/` directory of your WordPress installation.
 2. Activate the plugin through the 'Plugins' menu in WordPress.
-3. Navigate to the 'Tools' menu in the WordPress admin area, then select 'Yoast Bulk Meta Editor'.
+3. Navigate to the 'Tools' menu in the WordPress admin area, then select 'SEO Bulk Meta Editor for Yoast'.
 
 ## Usage
 
@@ -22,7 +22,7 @@ Yoast Bulk Meta Editor is a WordPress plugin designed to extend the Yoast SEO pl
 
 ## Support
 
-This plugin is provided as is, with no implied warranties or guarantees of functionality. If you encounter any issues, please [open an issue on GitHub](https://github.com/costibotez/yoast-bulk-meta-editor/issues).
+This plugin is provided as is, with no implied warranties or guarantees of functionality. If you encounter any issues, please [open an issue on GitHub](https://github.com/costibotez/seo-bulk-meta-editor/issues).
 
 ## Author
 
