@@ -1,0 +1,16 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: SEO Bulk Meta Editor\n"
+"Language: es_ES\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Yoast Bulk Meta Editor"
+msgstr "Editor Masivo de Meta Yoast"
+
+msgid "Settings"
+msgstr "Ajustes"
+
+msgid "CSV Import/Export (PRO)"
+msgstr "Importar/Exportar CSV (PRO)"

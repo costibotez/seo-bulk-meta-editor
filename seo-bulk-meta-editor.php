@@ -6,20 +6,29 @@
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
+ * Text Domain: seo-bulk-meta-editor
+ * Domain Path: /languages
 */
 
 define('YBME_POSTS_PER_PAGE', 50);
 
+define('YBME_TEXT_DOMAIN', 'seo-bulk-meta-editor');
+
+function ybme_load_textdomain() {
+    load_plugin_textdomain(YBME_TEXT_DOMAIN, false, dirname(plugin_basename(__FILE__)) . '/languages');
+}
+add_action('plugins_loaded', 'ybme_load_textdomain');
+
 define('YBME_CAPABILITY', 'manage_ybme_meta');
 function ybme_get_available_columns() {
     return array(
-        'title'            => array('label' => 'Title'),
-        'post_type'        => array('label' => 'Post Type'),
-        'meta_title'       => array('label' => 'Meta Title', 'meta_key' => '_yoast_wpseo_title'),
-        'meta_description' => array('label' => 'Meta Description', 'meta_key' => '_yoast_wpseo_metadesc'),
-        'keyword'          => array('label' => 'Keyword', 'meta_key' => '_yoast_wpseo_focuskw'),
-        'canonical_url'    => array('label' => 'Canonical URL', 'meta_key' => '_yoast_wpseo_canonical'),
-        'social_title'     => array('label' => 'Social Title', 'meta_key' => '_yoast_wpseo_opengraph-title'),
+        'title'            => array('label' => __('Title', YBME_TEXT_DOMAIN)),
+        'post_type'        => array('label' => __('Post Type', YBME_TEXT_DOMAIN)),
+        'meta_title'       => array('label' => __('Meta Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_title'),
+        'meta_description' => array('label' => __('Meta Description', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_metadesc'),
+        'keyword'          => array('label' => __('Keyword', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_focuskw'),
+        'canonical_url'    => array('label' => __('Canonical URL', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_canonical'),
+        'social_title'     => array('label' => __('Social Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_opengraph-title'),
     );
 }
 
@@ -46,7 +55,11 @@ function check_for_yoast_seo()
 {
     if (!is_plugin_active('wordpress-seo/wp-seo.php') && current_user_can('activate_plugins')) {
         // Stop activation redirect and show error
-        wp_die('Sorry, but this plugin requires Yoast SEO to be installed and active. <br><a href="' . admin_url('plugins.php') . '">&laquo; Return to Plugins</a>');
+        wp_die(sprintf(
+            /* translators: %s: plugins admin url */
+            __('Sorry, but this plugin requires Yoast SEO to be installed and active. <br><a href="%s">&laquo; Return to Plugins</a>', YBME_TEXT_DOMAIN),
+            admin_url('plugins.php')
+        ));
     }
 }
 function ybme_apply_role_capabilities($roles) {
@@ -85,13 +98,13 @@ add_action('admin_menu', 'yoast_bulk_meta_editor_create_menu');
 // Create new top-level menu
 function yoast_bulk_meta_editor_create_menu() {
     // Create new top-level menu
-    add_menu_page('Yoast Bulk Meta Editor', 'Yoast Bulk Meta Editor', YBME_CAPABILITY, 'yoast-bulk-meta-editor', 'yoast_bulk_meta_editor_page' );
+    add_menu_page(__('Yoast Bulk Meta Editor', YBME_TEXT_DOMAIN), __('Yoast Bulk Meta Editor', YBME_TEXT_DOMAIN), YBME_CAPABILITY, 'yoast-bulk-meta-editor', 'yoast_bulk_meta_editor_page' );
 
     // Create submenu for settings
-    add_submenu_page('yoast-bulk-meta-editor', 'Yoast Bulk Meta Editor Settings', 'Settings', 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
+    add_submenu_page('yoast-bulk-meta-editor', __('Yoast Bulk Meta Editor Settings', YBME_TEXT_DOMAIN), __('Settings', YBME_TEXT_DOMAIN), 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
 
     // CSV import/export page (PRO)
-    add_submenu_page('yoast-bulk-meta-editor', 'CSV Import/Export', 'CSV Import/Export (PRO)', 'manage_options', 'yoast-bulk-meta-editor-csv', 'ybme_csv_tools_page');
+    add_submenu_page('yoast-bulk-meta-editor', __('CSV Import/Export', YBME_TEXT_DOMAIN), __('CSV Import/Export (PRO)', YBME_TEXT_DOMAIN), 'manage_options', 'yoast-bulk-meta-editor-csv', 'ybme_csv_tools_page');
 
     // Call register settings function
     add_action('admin_init', 'register_yoast_bulk_meta_editor_settings');
@@ -115,16 +128,16 @@ function yoast_bulk_meta_editor_page()
     // Only include categories that contain posts
     $categories = get_categories(array('hide_empty' => true));
 
-    echo '<h1 style="text-align: center;padding: 30px 0">Yoast Bulk Meta Editor</h1>';
+    echo '<h1 style="text-align: center;padding: 30px 0">' . esc_html__('Yoast Bulk Meta Editor', YBME_TEXT_DOMAIN) . '</h1>';
 
     echo '<div class="filter-controls">';
-    echo '<input type="text" id="search-box" placeholder="Search title..." />';
-    echo '<select id="post-type-filter"><option value="">All Post Types</option>';
+    echo '<input type="text" id="search-box" placeholder="' . esc_attr__('Search title...', YBME_TEXT_DOMAIN) . '" />';
+    echo '<select id="post-type-filter"><option value="">' . esc_html__('All Post Types', YBME_TEXT_DOMAIN) . '</option>';
     foreach ($post_types as $type) {
         echo '<option value="' . esc_attr($type) . '">' . esc_html(ucfirst($type)) . '</option>';
     }
     echo '</select>';
-    echo '<select id="category-filter" disabled="disabled"><option value="">All Categories</option>';
+    echo '<select id="category-filter" disabled="disabled"><option value="">' . esc_html__('All Categories', YBME_TEXT_DOMAIN) . '</option>';
     foreach ($categories as $cat) {
         echo '<option value="' . esc_attr($cat->slug) . '">' . esc_html($cat->name) . '</option>';
     }
@@ -205,13 +218,13 @@ function yoast_bulk_meta_editor_page()
     }
     echo '</tbody>';
     echo '</table>';
-    echo '<button id="load-more-btn" style="margin-top:20px;">Load More</button>';
+    echo '<button id="load-more-btn" style="margin-top:20px;">' . esc_html__('Load More', YBME_TEXT_DOMAIN) . '</button>';
     wp_reset_postdata();
 
     echo '<div style="text-align: center; margin-top: 20px;">';
-    echo '<button id="save-btn" style="background-color: #4CAF50; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">Save Changes</button>';
-    echo '<button id="undo-btn" style="background-color: #777; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">Undo Last Change</button>';
-    echo '<a href="https://www.buymeacoffee.com/costinbotez" target="_blank" style="background-color: #FF813F; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Support the plugin 🙌</a>';
+    echo '<button id="save-btn" style="background-color: #4CAF50; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">' . esc_html__('Save Changes', YBME_TEXT_DOMAIN) . '</button>';
+    echo '<button id="undo-btn" style="background-color: #777; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">' . esc_html__('Undo Last Change', YBME_TEXT_DOMAIN) . '</button>';
+    echo '<a href="https://www.buymeacoffee.com/costinbotez" target="_blank" style="background-color: #FF813F; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">' . esc_html__('Support the plugin 🙌', YBME_TEXT_DOMAIN) . '</a>';
     echo '</div>';
     echo '<ul id="history-log" style="margin-top: 20px;"></ul>';
 }
@@ -236,13 +249,13 @@ function yoast_bulk_meta_editor_settings_page() {
     $selected_columns = ybme_get_enabled_columns();
     ?>
     <div class="wrap">
-        <h1>Yoast Bulk Meta Editor Settings</h1>
+        <h1><?php echo esc_html__('Yoast Bulk Meta Editor Settings', YBME_TEXT_DOMAIN); ?></h1>
 
         <form method="post" action="options.php">
             <?php settings_fields('yoast-bulk-meta-editor-settings-group'); ?>
             <?php do_settings_sections('yoast-bulk-meta-editor-settings-group'); ?>
 
-            <h2>Select post types:</h2>
+            <h2><?php echo esc_html__('Select post types:', YBME_TEXT_DOMAIN); ?></h2>
 
             <?php
                 foreach ($all_post_types as $post_type) {
@@ -251,7 +264,7 @@ function yoast_bulk_meta_editor_settings_page() {
                 }
             ?>
 
-            <h2 style="margin-top:20px;">Select columns:</h2>
+            <h2 style="margin-top:20px;"><?php echo esc_html__('Select columns:', YBME_TEXT_DOMAIN); ?></h2>
             <?php
                 foreach ($all_columns as $key => $info) {
                     echo '<input type="checkbox" id="col_' . $key . '" name="ybme_enabled_columns[]" value="' . $key . '"' . (in_array($key, $selected_columns) ? ' checked' : '') . '>';
@@ -259,7 +272,7 @@ function yoast_bulk_meta_editor_settings_page() {
                 }
             ?>
 
-            <h2 style="margin-top:20px;">Allowed Roles:</h2>
+            <h2 style="margin-top:20px;"><?php echo esc_html__('Allowed Roles:', YBME_TEXT_DOMAIN); ?></h2>
             <?php
                 $all_roles = get_editable_roles();
                 $selected_roles = get_option('ybme_roles', array('administrator'));
@@ -268,21 +281,21 @@ function yoast_bulk_meta_editor_settings_page() {
                     echo '<label for="role_' . esc_attr($role_slug) . '">' . esc_html($details['name']) . '</label><br>';
                 }
             ?>
-            <h2 style="margin-top:20px;">License Key (PRO):</h2>
+            <h2 style="margin-top:20px;"><?php echo esc_html__('License Key (PRO):', YBME_TEXT_DOMAIN); ?></h2>
             <?php
                 $license = esc_attr(get_option('ybme_license_key', ''));
-                echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="Enter license key" />';
+                echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="' . esc_attr__('Enter license key', YBME_TEXT_DOMAIN) . '" />';
             ?>
-            <h2 style="margin-top:20px;">Import Options:</h2>
+            <h2 style="margin-top:20px;"><?php echo esc_html__('Import Options:', YBME_TEXT_DOMAIN); ?></h2>
             <?php
                 $del = get_option('ybme_delete_on_blank', 0);
-                echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> Delete meta values when CSV cells are blank</label>';
+                echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> ' . esc_html__('Delete meta values when CSV cells are blank', YBME_TEXT_DOMAIN) . '</label>';
             ?>
             <div class="ybme-upsell">
-                <p><strong>Bulk-edit metadata in seconds</strong></p>
-                <p><strong>Offline backups you can trust</strong></p>
-                <p><strong>Boost your WP workflow</strong></p>
-                <p class="ybme-upsell-subtext"><strong>Why go PRO?</strong><br/>Unlock CSV import/export and secure backups for rapid SEO edits.</p>
+                <p><strong><?php echo esc_html__('Bulk-edit metadata in seconds', YBME_TEXT_DOMAIN); ?></strong></p>
+                <p><strong><?php echo esc_html__('Offline backups you can trust', YBME_TEXT_DOMAIN); ?></strong></p>
+                <p><strong><?php echo esc_html__('Boost your WP workflow', YBME_TEXT_DOMAIN); ?></strong></p>
+                <p class="ybme-upsell-subtext"><strong><?php echo esc_html__('Why go PRO?', YBME_TEXT_DOMAIN); ?></strong><br/><?php echo esc_html__('Unlock CSV import/export and secure backups for rapid SEO edits.', YBME_TEXT_DOMAIN); ?></p>
             </div>
 
             <?php submit_button(); ?>
@@ -307,6 +320,19 @@ function enqueue_admin_scripts()
         wp_enqueue_script('bulk-meta-editor', plugins_url('/js/bulk-meta-editor.js', __FILE__), array('jquery', 'jquery-tablesorter', 'jquery-ui-sortable'), '1.0', true);
         wp_localize_script('bulk-meta-editor', 'bulk_editor_vars', array(
             'posts_per_page' => YBME_POSTS_PER_PAGE,
+            'i18n' => array(
+                'meta_updated'    => __('Meta info updated successfully', YBME_TEXT_DOMAIN),
+                'update_failed'   => __('Failed to update meta info', YBME_TEXT_DOMAIN),
+                'nothing_to_undo' => __('Nothing to undo', YBME_TEXT_DOMAIN),
+                'change_reverted' => __('Change reverted', YBME_TEXT_DOMAIN),
+                'revert_failed'   => __('Failed to revert change', YBME_TEXT_DOMAIN),
+                'load_failed'     => __('Failed to load more posts', YBME_TEXT_DOMAIN),
+                'label_title'     => __('Title', YBME_TEXT_DOMAIN),
+                'label_meta_description' => __('Meta Description', YBME_TEXT_DOMAIN),
+                'label_keyword'   => __('Keyword', YBME_TEXT_DOMAIN),
+                'label_canonical_url' => __('Canonical URL', YBME_TEXT_DOMAIN),
+                'label_social_title' => __('Social Title', YBME_TEXT_DOMAIN),
+            ),
         ));
 
         // Enqueue our custom styles
@@ -405,26 +431,26 @@ function ybme_csv_tools_page() {
         exit;
     }
 
-    echo '<div class="wrap"><h1>CSV Import/Export</h1>';
+    echo '<div class="wrap"><h1>' . esc_html__('CSV Import/Export', YBME_TEXT_DOMAIN) . '</h1>';
 
     if (!ybme_is_pro()) {
-        echo '<p>This feature is available in the PRO version. Enter your license key in Settings to enable it.</p></div>';
+        echo '<p>' . esc_html__('This feature is available in the PRO version. Enter your license key in Settings to enable it.', YBME_TEXT_DOMAIN) . '</p></div>';
         return;
     }
 
     if (isset($_POST['ybme_import_csv']) && !empty($_FILES['ybme_csv_file']['tmp_name'])) {
         ybme_import_csv($_FILES['ybme_csv_file']);
-        echo '<div class="updated notice"><p>Import completed.</p></div>';
+        echo '<div class="updated notice"><p>' . esc_html__('Import completed.', YBME_TEXT_DOMAIN) . '</p></div>';
     }
 
     ?>
     <form method="post">
         <input type="hidden" name="ybme_export_csv" value="1" />
-        <?php submit_button('Export CSV'); ?>
+        <?php submit_button(__('Export CSV', YBME_TEXT_DOMAIN)); ?>
     </form>
     <form method="post" enctype="multipart/form-data" style="margin-top:20px;">
         <input type="file" name="ybme_csv_file" accept=".csv" required />
-        <?php submit_button('Import CSV'); ?>
+        <?php submit_button(__('Import CSV', YBME_TEXT_DOMAIN)); ?>
     </form>
     </div>
     <?php

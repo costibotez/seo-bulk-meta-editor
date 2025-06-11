@@ -1,0 +1,20 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: SEO Bulk Meta Editor\n"
+"POT-Creation-Date: 2023-01-01 00:00+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Codex\n"
+
+#: seo-bulk-meta-editor.php
+msgid "Yoast Bulk Meta Editor"
+msgstr ""
+
+#: seo-bulk-meta-editor.php
+msgid "Settings"
+msgstr ""
+
+#: seo-bulk-meta-editor.php
+msgid "CSV Import/Export (PRO)"
+msgstr ""
