@@ -230,13 +230,11 @@ function yoast_bulk_meta_editor_settings_page() {
                 $license = esc_attr(get_option('ybme_license_key', ''));
                 echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="Enter license key" />';
             ?>
-
             <h2 style="margin-top:20px;">Import Options:</h2>
             <?php
                 $del = get_option('ybme_delete_on_blank', 0);
                 echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> Delete meta values when CSV cells are blank</label>';
             ?>
-
             <div class="ybme-upsell">
                 <p><strong>Bulk-edit metadata in seconds</strong></p>
                 <p><strong>Offline backups you can trust</strong></p>
