@@ -39,13 +39,14 @@ function yoast_bulk_meta_editor_page()
 {
     // Get all public post types
     $post_types = get_post_types(array('public' => true), 'names');
-    $categories = get_categories(array('hide_empty' => false));
+    // Only include categories that contain posts
+    $categories = get_categories(array('hide_empty' => true));
 
     echo '<h1 style="text-align: center;padding: 30px 0">Yoast Bulk Meta Editor</h1>';
 
-    echo '<div class="filter-controls" style="text-align:center;margin-bottom:20px;">';
-    echo '<input type="text" id="search-box" placeholder="Search title..." style="margin-right:10px;" />';
-    echo '<select id="category-filter" style="margin-right:10px;"><option value="">All Categories</option>';
+    echo '<div class="filter-controls">';
+    echo '<input type="text" id="search-box" placeholder="Search title..." />';
+    echo '<select id="category-filter"><option value="">All Categories</option>';
     foreach ($categories as $cat) {
         echo '<option value="' . esc_attr($cat->slug) . '">' . esc_html($cat->name) . '</option>';
     }
