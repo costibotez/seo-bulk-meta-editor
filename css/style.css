@@ -1,0 +1,48 @@
+/* CSS file: style.css */
+
+.wp-list-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wp-list-table th, .wp-list-table td {
+    padding: 15px;
+    border: 1px solid #ddd;
+    text-align: left;
+}
+
+.wp-list-table th {
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+.editable {
+    cursor: pointer;
+}
+
+/* Notification styling */
+#notification {
+    margin-bottom: 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    color: #ffffff;
+}
+
+#notification.success {
+    background-color: #4CAF50;
+}
+
+#notification.error {
+    background-color: #f44336;
+}
+
+.toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #444;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    z-index: 10000; /* make sure it's above everything else */
+}
