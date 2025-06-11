@@ -1,6 +1,36 @@
 jQuery(document).ready(function($) {
     var changes = {};
 
+    function filterRows() {
+        var search = $('#search-box').val().toLowerCase();
+        var category = $('#category-filter').val();
+        var type = $('#post-type-filter').val();
+
+        $('#meta_info_table tbody tr').each(function() {
+            var $row = $(this);
+            var title = ($row.data('title') || '').toString();
+            var cats = ($row.data('categories') || '').toString();
+            var postType = ($row.data('post-type') || '').toString();
+
+            var match = true;
+
+            if (search && title.indexOf(search) === -1) {
+                match = false;
+            }
+            if (category && cats.indexOf(category) === -1) {
+                match = false;
+            }
+            if (type && postType !== type) {
+                match = false;
+            }
+
+            $row.toggle(match);
+        });
+    }
+
+    $('#search-box').on('keyup', filterRows);
+    $('#category-filter, #post-type-filter').on('change', filterRows);
+
     $('td.editable').on('click', function() {
         // Prevent clearing existing content if the cell is already being edited
         if ($(this).hasClass('cellEditing')) {

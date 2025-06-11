@@ -39,8 +39,23 @@ function yoast_bulk_meta_editor_page()
 {
     // Get all public post types
     $post_types = get_post_types(array('public' => true), 'names');
+    $categories = get_categories(array('hide_empty' => false));
 
     echo '<h1 style="text-align: center;padding: 30px 0">Yoast Bulk Meta Editor</h1>';
+
+    echo '<div class="filter-controls" style="text-align:center;margin-bottom:20px;">';
+    echo '<input type="text" id="search-box" placeholder="Search title..." style="margin-right:10px;" />';
+    echo '<select id="category-filter" style="margin-right:10px;"><option value="">All Categories</option>';
+    foreach ($categories as $cat) {
+        echo '<option value="' . esc_attr($cat->slug) . '">' . esc_html($cat->name) . '</option>';
+    }
+    echo '</select>';
+    echo '<select id="post-type-filter"><option value="">All Post Types</option>';
+    foreach ($post_types as $type) {
+        echo '<option value="' . esc_attr($type) . '">' . esc_html(ucfirst($type)) . '</option>';
+    }
+    echo '</select>';
+    echo '</div>';
 
     echo '<div id="notification" class="toast" style="display: none; text-align: center; padding: 10px;"></div>';
     echo '<table id="meta_info_table" class="wp-list-table widefat fixed striped posts">';
@@ -70,7 +85,19 @@ function yoast_bulk_meta_editor_page()
         // displayed and can be updated properly.
         $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
         $post_meta_title = get_post_meta($post->ID, '_yoast_wpseo_title', true);
-        echo '<tr data-post-id="' . $post->ID . '"><td><a href="' . $page_title_link . '">'. $page_title . '</a></td><td>' . ucfirst($post_type) . '</td><td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td><td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td><td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td></tr>';
+        $cat_slugs = wp_get_post_terms($post->ID, 'category', array('fields' => 'slugs'));
+        $row  = '<tr data-post-id="' . $post->ID . '"';
+        $row .= ' data-title="' . esc_attr(strtolower($page_title)) . '"';
+        $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
+        $row .= ' data-post-type="' . esc_attr($post_type) . '"';
+        $row .= '>'; 
+        $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
+        $row .= '<td>' . ucfirst($post_type) . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+        $row .= '</tr>';
+        echo $row;
     }
     echo '</tbody>';
     echo '</table>';
