@@ -185,7 +185,7 @@ function yoast_bulk_meta_editor_page()
         'post_type'   => get_option('post_types', ['post', 'page']), // Use the selected post types
         'post_status' => 'publish',
         'orderby'     => 'post_type',
-        'order'       => 'DESC',
+        'order'       => 'ASC',
     );
     if (ybme_wpml_active()) {
         $args['suppress_filters'] = false;
@@ -209,7 +209,7 @@ function yoast_bulk_meta_editor_page()
             if (isset($info['language_code'])) {
                 $post_lang = $info['language_code'];
             }
-            if (!empty($selected_langs) && !in_array($post_lang, $selected_langs)) {
+            if (!empty($selected_langs) && $post_lang !== '' && !in_array($post_lang, $selected_langs)) {
                 continue;
             }
         }
@@ -446,7 +446,7 @@ function yoast_bulk_meta_editor_load_more_posts()
         'post_type'   => get_option('post_types', ['post', 'page']),
         'post_status' => 'publish',
         'orderby'     => 'post_type',
-        'order'       => 'DESC',
+        'order'       => 'ASC',
     );
     $selected_langs = array();
     $lang_flags = array();
@@ -468,7 +468,7 @@ function yoast_bulk_meta_editor_load_more_posts()
             if (isset($info['language_code'])) {
                 $post_lang = $info['language_code'];
             }
-            if (!empty($selected_langs) && !in_array($post_lang, $selected_langs)) {
+            if (!empty($selected_langs) && $post_lang !== '' && !in_array($post_lang, $selected_langs)) {
                 continue;
             }
         }
