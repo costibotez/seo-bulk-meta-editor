@@ -52,6 +52,16 @@ jQuery(document).ready(function($) {
 
     // Function to show the notification
     function showNotification(message, type) {
-        alert(message);
+        var $notification = $('#notification');
+        $notification
+            .text(message)
+            .removeClass('success error')
+            .addClass(type)
+            .fadeIn(200, function() {
+                var $self = $(this);
+                setTimeout(function() {
+                    $self.fadeOut(200);
+                }, 3000);
+            });
     }
 });
