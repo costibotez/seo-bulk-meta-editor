@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -188,6 +188,7 @@ function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'post_types');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_delete_on_blank');
 }
 
 // Create settings page
@@ -229,7 +230,11 @@ function yoast_bulk_meta_editor_settings_page() {
                 $license = esc_attr(get_option('ybme_license_key', ''));
                 echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="Enter license key" />';
             ?>
-
+            <h2 style="margin-top:20px;">Import Options:</h2>
+            <?php
+                $del = get_option('ybme_delete_on_blank', 0);
+                echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> Delete meta values when CSV cells are blank</label>';
+            ?>
             <div class="ybme-upsell">
                 <p><strong>Bulk-edit metadata in seconds</strong></p>
                 <p><strong>Offline backups you can trust</strong></p>
@@ -378,32 +383,64 @@ function ybme_csv_tools_page() {
 }
 
 function ybme_export_csv() {
+    global $wpdb;
+
     $posts = get_posts([
         'numberposts' => -1,
         'post_type'   => get_option('post_types', ['post','page']),
-        'post_status' => 'publish',
+        'post_status' => 'any',
         'orderby'     => 'ID',
         'order'       => 'ASC'
     ]);
 
-    $cols = ybme_get_available_columns();
-    $headers = ['ID','post_title'];
-    foreach ($cols as $info) {
-        if (isset($info['meta_key'])) {
-            $headers[] = $info['meta_key'];
-        }
+    if (empty($posts)) {
+        return;
     }
 
-    header('Content-Type: text/csv');
+    $post_ids = wp_list_pluck($posts, 'ID');
+    $placeholders = implode(',', array_fill(0, count($post_ids), '%d'));
+    $meta_keys = [];
+    if ($placeholders) {
+        $query = $wpdb->prepare("SELECT DISTINCT meta_key FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders)", $post_ids);
+        $meta_keys = $wpdb->get_col($query);
+    }
+    sort($meta_keys);
+
+    $headers = [
+        'post_id',
+        'post_type',
+        'post_title',
+        'post_slug',
+        'post_status',
+        'post_date',
+        'post_modified'
+    ];
+    foreach ($meta_keys as $k) {
+        $headers[] = 'meta_' . $k;
+    }
+
+    header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ybme-export.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, $headers);
+
     foreach ($posts as $p) {
-        $row = [$p->ID, $p->post_title];
-        foreach ($cols as $info) {
-            if (isset($info['meta_key'])) {
-                $row[] = get_post_meta($p->ID, $info['meta_key'], true);
+        $row = [
+            $p->ID,
+            $p->post_type,
+            $p->post_title,
+            $p->post_name,
+            $p->post_status,
+            mysql2date('Y-m-d H:i:s', $p->post_date, false),
+            mysql2date('Y-m-d H:i:s', $p->post_modified, false)
+        ];
+
+        foreach ($meta_keys as $k) {
+            $val = get_post_meta($p->ID, $k, true);
+            if (is_array($val)) {
+                $val = implode('|', $val);
             }
+            $row[] = $val;
         }
         fputcsv($out, $row);
     }
@@ -411,13 +448,7 @@ function ybme_export_csv() {
 }
 
 function ybme_import_csv($file) {
-    $cols = ybme_get_available_columns();
-    $meta_keys = [];
-    foreach ($cols as $info) {
-        if (isset($info['meta_key'])) {
-            $meta_keys[$info['meta_key']] = $info['meta_key'];
-        }
-    }
+    $delete = get_option('ybme_delete_on_blank', 0);
 
     $handle = fopen($file['tmp_name'], 'r');
     if (!$handle) {
@@ -429,16 +460,37 @@ function ybme_import_csv($file) {
         return;
     }
 
+    $meta_cols = [];
+    foreach ($header as $index => $name) {
+        if (strpos($name, 'meta_') === 0) {
+            $meta_cols[$index] = substr($name, 5);
+        }
+    }
+    $post_index = array_search('post_id', $header);
+
     while (($row = fgetcsv($handle)) !== false) {
-        $data = array_combine($header, $row);
-        if (!isset($data['ID'])) {
+        $post_id = ($post_index !== false && isset($row[$post_index])) ? intval($row[$post_index]) : 0;
+        if (!$post_id) {
             continue;
         }
-        $post_id = intval($data['ID']);
-        foreach ($meta_keys as $col) {
-            if (isset($data[$col])) {
-                update_post_meta($post_id, $col, sanitize_text_field($data[$col]));
+
+        foreach ($meta_cols as $index => $meta_key) {
+            if (!isset($row[$index])) {
+                continue;
             }
+            $val = $row[$index];
+            if ($val === '') {
+                if ($delete) {
+                    delete_post_meta($post_id, $meta_key);
+                }
+                continue;
+            }
+            if (strpos($val, '|') !== false) {
+                $val = array_map('sanitize_text_field', explode('|', $val));
+            } else {
+                $val = sanitize_text_field($val);
+            }
+            update_post_meta($post_id, $meta_key, $val);
         }
     }
     fclose($handle);
