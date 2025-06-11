@@ -64,3 +64,14 @@
 .filter-controls select:last-child {
     margin-right: 0;
 }
+
+#load-more-btn {
+    background-color: #0073aa;
+    color: #fff;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: block;
+    margin: 20px auto;
+}

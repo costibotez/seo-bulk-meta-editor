@@ -6,6 +6,7 @@ Yoast SEO Bulk Meta Editor is a small WordPress plugin that adds a dedicated adm
 
 - View all Yoast SEO meta titles, descriptions and keywords in one place
 - Edit meta fields inline and save all changes at once via AJAX
+- Responsive table with "Load More" support for large datasets
 - Choose which post types are included from the plugin's **Settings** page
 - Requires the [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) plugin to be installed and active
 
