@@ -1,7 +1,16 @@
 jQuery(document).ready(function($) {
     var changes = {};
+    var changeHistory = [];
     var postsPerPage = parseInt(bulk_editor_vars.posts_per_page, 10);
     var offset = postsPerPage;
+
+    function logChange(postId, metaKey, oldValue, newValue) {
+        changeHistory.push({postId: postId, metaKey: metaKey, oldValue: oldValue, newValue: newValue});
+        var label = metaKey === '_yoast_wpseo_title' ? 'Title' :
+                    metaKey === '_yoast_wpseo_metadesc' ? 'Meta Description' :
+                    'Keyword';
+        $('#history-log').append('<li>' + label + ' for post ' + postId + ' updated.</li>');
+    }
 
     function filterRows() {
         var search = $('#search-box').val().toLowerCase();
@@ -105,6 +114,7 @@ jQuery(document).ready(function($) {
                 changes[postId] = {};
             }
             changes[postId][metaKey] = newContent;
+            logChange(postId, metaKey, originalContent, newContent);
         });
     });
 
@@ -134,6 +144,42 @@ jQuery(document).ready(function($) {
                 });
             }
         }
+    });
+
+    $('#undo-btn').click(function() {
+        var last = changeHistory.pop();
+        if (!last) {
+            showNotification('Nothing to undo', 'error');
+            return;
+        }
+
+        var selector = 'tr[data-post-id="' + last.postId + '"] td[data-meta-key="' + last.metaKey + '"]';
+        var $cell = $(selector);
+        $cell.text(last.oldValue);
+
+        if (!changes[last.postId]) {
+            changes[last.postId] = {};
+        }
+        changes[last.postId][last.metaKey] = last.oldValue;
+
+        var data = {
+            'action': 'save_meta_info',
+            'post_id': last.postId,
+            'meta_key': last.metaKey,
+            'meta_value': last.oldValue
+        };
+
+        $.post(ajaxurl, data, function(response) {
+            if (response.success) {
+                showNotification('Change reverted', 'success');
+            } else {
+                showNotification('Failed to revert change', 'error');
+            }
+        }).fail(function() {
+            showNotification('Failed to revert change', 'error');
+        });
+
+        $('#history-log li').last().remove();
     });
 
     $('#load-more-btn').on('click', function() {

@@ -111,8 +111,10 @@ function yoast_bulk_meta_editor_page()
 
     echo '<div style="text-align: center; margin-top: 20px;">';
     echo '<button id="save-btn" style="background-color: #4CAF50; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">Save Changes</button>';
+    echo '<button id="undo-btn" style="background-color: #777; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">Undo Last Change</button>';
     echo '<a href="https://www.buymeacoffee.com/costinbotez" target="_blank" style="background-color: #FF813F; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Support the plugin 🙌</a>';
     echo '</div>';
+    echo '<ul id="history-log" style="margin-top: 20px;"></ul>';
 }
 
 // Register our settings

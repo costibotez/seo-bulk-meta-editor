@@ -93,3 +93,9 @@
 .char-counter.exceeded {
     color: #f44336;
 }
+
+#history-log {
+    list-style: disc inside;
+    margin-top: 20px;
+    text-align: left;
+}
