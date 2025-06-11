@@ -26,6 +26,10 @@ Yoast SEO Bulk Meta Editor is a small WordPress plugin that adds a dedicated adm
 
 Pull requests and issues are welcome. Feel free to submit improvements or report problems on GitHub.
 
+## Author
+
+Costin Botez - [Buy me a coffee](https://www.buymeacoffee.com/costinbotez)
+
 ## License
 
 Released under the GPLv2 or later.
