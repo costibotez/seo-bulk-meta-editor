@@ -30,8 +30,22 @@ jQuery(document).ready(function($) {
         });
     }
 
+    function updateCategoryFilter() {
+        var type = $('#post-type-filter').val();
+        if (type === 'post') {
+            $('#category-filter').prop('disabled', false);
+        } else {
+            $('#category-filter').prop('disabled', true).val('');
+        }
+        filterRows();
+    }
+
     $('#search-box').on('keyup', filterRows);
-    $('#category-filter, #post-type-filter').on('change', filterRows);
+    $('#category-filter').on('change', filterRows);
+    $('#post-type-filter').on('change', updateCategoryFilter);
+
+    // Initialize state on page load
+    updateCategoryFilter();
 
     $(document).on('click', 'td.editable', function() {
         // Prevent clearing existing content if the cell is already being edited

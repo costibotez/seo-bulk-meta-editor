@@ -49,14 +49,14 @@ function yoast_bulk_meta_editor_page()
 
     echo '<div class="filter-controls">';
     echo '<input type="text" id="search-box" placeholder="Search title..." />';
-    echo '<select id="category-filter"><option value="">All Categories</option>';
-    foreach ($categories as $cat) {
-        echo '<option value="' . esc_attr($cat->slug) . '">' . esc_html($cat->name) . '</option>';
-    }
-    echo '</select>';
     echo '<select id="post-type-filter"><option value="">All Post Types</option>';
     foreach ($post_types as $type) {
         echo '<option value="' . esc_attr($type) . '">' . esc_html(ucfirst($type)) . '</option>';
+    }
+    echo '</select>';
+    echo '<select id="category-filter" disabled="disabled"><option value="">All Categories</option>';
+    foreach ($categories as $cat) {
+        echo '<option value="' . esc_attr($cat->slug) . '">' . esc_html($cat->name) . '</option>';
     }
     echo '</select>';
     echo '</div>';
