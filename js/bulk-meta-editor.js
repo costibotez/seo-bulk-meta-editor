@@ -1,5 +1,7 @@
 jQuery(document).ready(function($) {
     var changes = {};
+    var postsPerPage = parseInt(bulk_editor_vars.posts_per_page, 10);
+    var offset = postsPerPage;
 
     function filterRows() {
         var search = $('#search-box').val().toLowerCase();
@@ -31,7 +33,7 @@ jQuery(document).ready(function($) {
     $('#search-box').on('keyup', filterRows);
     $('#category-filter, #post-type-filter').on('change', filterRows);
 
-    $('td.editable').on('click', function() {
+    $(document).on('click', 'td.editable', function() {
         // Prevent clearing existing content if the cell is already being edited
         if ($(this).hasClass('cellEditing')) {
             return;
@@ -82,6 +84,25 @@ jQuery(document).ready(function($) {
                 });
             }
         }
+    });
+
+    $('#load-more-btn').on('click', function() {
+        var data = {
+            'action': 'load_more_posts',
+            'offset': offset
+        };
+
+        $.post(ajaxurl, data, function(response) {
+            if (response) {
+                $('#meta_info_table tbody').append(response);
+                offset += postsPerPage;
+                filterRows();
+            } else {
+                $('#load-more-btn').hide();
+            }
+        }).fail(function() {
+            showNotification('Failed to load more posts', 'error');
+        });
     });
 
     // Function to show the notification

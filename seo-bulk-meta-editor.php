@@ -2,11 +2,13 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.0.1
+ * Version: 1.1.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
 */
+
+define('YBME_POSTS_PER_PAGE', 50);
 
 
 // Check for Yoast SEO plugin on activation
@@ -37,6 +39,7 @@ function yoast_bulk_meta_editor_create_menu() {
 // Page content
 function yoast_bulk_meta_editor_page()
 {
+    $posts_per_page = YBME_POSTS_PER_PAGE;
     // Get all public post types
     $post_types = get_post_types(array('public' => true), 'names');
     // Only include categories that contain posts
@@ -61,13 +64,14 @@ function yoast_bulk_meta_editor_page()
     echo '<div id="notification" class="toast" style="display: none; text-align: center; padding: 10px;"></div>';
     echo '<table id="meta_info_table" class="wp-list-table widefat fixed striped posts">';
 
-    // Fetch all posts
+    // Fetch first batch of posts
     $args = array(
-        'numberposts' => -1, // Get all posts,
-        'post_type' => get_option('post_types', ['post', 'page']), // Use the selected post types
+        'numberposts' => $posts_per_page,
+        'offset'      => 0,
+        'post_type'   => get_option('post_types', ['post', 'page']), // Use the selected post types
         'post_status' => 'publish',
-        'orderby' => 'post_type', // Order by post type
-        'order' => 'DESC', // Ascending order
+        'orderby'     => 'post_type',
+        'order'       => 'DESC',
     );
     $all_posts = get_posts($args);
 
@@ -102,6 +106,7 @@ function yoast_bulk_meta_editor_page()
     }
     echo '</tbody>';
     echo '</table>';
+    echo '<button id="load-more-btn" style="margin-top:20px;">Load More</button>';
     wp_reset_postdata();
 
     echo '<div style="text-align: center; margin-top: 20px;">';
@@ -158,6 +163,9 @@ function enqueue_admin_scripts()
 
         // Enqueue our custom script
         wp_enqueue_script('bulk-meta-editor', plugins_url('/js/bulk-meta-editor.js', __FILE__), array('jquery', 'jquery-tablesorter', 'jquery-ui-sortable'), '1.0', true);
+        wp_localize_script('bulk-meta-editor', 'bulk_editor_vars', array(
+            'posts_per_page' => YBME_POSTS_PER_PAGE,
+        ));
 
         // Enqueue our custom styles
         wp_enqueue_style('bulk-meta-editor', plugins_url('/css/style.css', __FILE__), array(), '1.0', 'all');
@@ -180,4 +188,43 @@ function save_meta_info()
     }
 
     wp_die(); // All ajax handlers die when finished
+}
+
+add_action('wp_ajax_load_more_posts', 'yoast_bulk_meta_editor_load_more_posts');
+function yoast_bulk_meta_editor_load_more_posts()
+{
+    $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+    $args = array(
+        'numberposts' => YBME_POSTS_PER_PAGE,
+        'offset'      => $offset,
+        'post_type'   => get_option('post_types', ['post', 'page']),
+        'post_status' => 'publish',
+        'orderby'     => 'post_type',
+        'order'       => 'DESC',
+    );
+    $posts = get_posts($args);
+    foreach ($posts as $post) {
+        $page_title = get_the_title($post->ID);
+        $page_title_link = get_edit_post_link($post->ID);
+        $post_type = get_post_type($post->ID);
+        $post_meta_description = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
+        $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
+        $post_meta_title = get_post_meta($post->ID, '_yoast_wpseo_title', true);
+        $cat_slugs = wp_get_post_terms($post->ID, 'category', array('fields' => 'slugs'));
+
+        $row  = '<tr data-post-id="' . $post->ID . '"';
+        $row .= ' data-title="' . esc_attr(strtolower($page_title)) . '"';
+        $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
+        $row .= ' data-post-type="' . esc_attr($post_type) . '"';
+        $row .= '>';
+        $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
+        $row .= '<td>' . ucfirst($post_type) . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
+        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+        $row .= '</tr>';
+        echo $row;
+    }
+    wp_reset_postdata();
+    wp_die();
 }
