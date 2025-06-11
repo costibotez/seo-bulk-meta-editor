@@ -1,19 +1,23 @@
 jQuery(document).ready(function($) {
     var changes = {};
 
-    $('td.editable').click(function() {
+    $('td.editable').on('click', function() {
+        // Prevent clearing existing content if the cell is already being edited
+        if ($(this).hasClass('cellEditing')) {
+            return;
+        }
+
         var originalContent = $(this).text();
         var postId = $(this).parent().data('post-id');
         var metaKey = $(this).data('meta-key');
 
-        $(this).addClass("cellEditing");
-        $(this).html("<input type='text' value='" + originalContent + "' />");
-        $(this).children().first().focus();
-
-        $(this).children().first().blur(function() {
+        $(this).addClass('cellEditing');
+        $(this).html('<textarea>' + originalContent + '</textarea>');
+        $(this).children('textarea').focus().one('blur', function() {
             var newContent = $(this).val();
-            $(this).parent().text(newContent);
-            $(this).parent().removeClass("cellEditing");
+            var $parent = $(this).parent();
+            $parent.text(newContent);
+            $parent.removeClass('cellEditing');
 
             if (!changes[postId]) {
                 changes[postId] = {};
