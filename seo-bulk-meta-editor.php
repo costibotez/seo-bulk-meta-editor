@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.4.1
+ * Version: 1.5.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -21,8 +21,22 @@ function ybme_load_textdomain() {
 add_action('plugins_loaded', 'ybme_load_textdomain');
 
 define('YBME_CAPABILITY', 'manage_ybme_meta');
+
+// Check if WPML is active
+function ybme_wpml_active() {
+    return defined('ICL_SITEPRESS_VERSION');
+}
+
+function ybme_get_wpml_languages() {
+    if (!ybme_wpml_active()) {
+        return array();
+    }
+    $langs = apply_filters('wpml_active_languages', null, array('skip_missing' => 0));
+    return is_array($langs) ? $langs : array();
+}
+
 function ybme_get_available_columns() {
-    return array(
+    $cols = array(
         'title'            => array('label' => __('Title', YBME_TEXT_DOMAIN)),
         'post_type'        => array('label' => __('Post Type', YBME_TEXT_DOMAIN)),
         'meta_title'       => array('label' => __('Meta Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_title'),
@@ -31,10 +45,17 @@ function ybme_get_available_columns() {
         'canonical_url'    => array('label' => __('Canonical URL', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_canonical'),
         'social_title'     => array('label' => __('Social Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_opengraph-title'),
     );
+    if (ybme_wpml_active()) {
+        $cols = array_merge(array('language_flag' => array('label' => __('Language', YBME_TEXT_DOMAIN))), $cols);
+    }
+    return $cols;
 }
 
 function ybme_get_enabled_columns() {
     $defaults = array('title','post_type','meta_title','meta_description','keyword');
+    if (ybme_wpml_active()) {
+        array_unshift($defaults, 'language_flag');
+    }
     $saved = get_option('ybme_enabled_columns');
     if (!is_array($saved)) {
         $saved = array();
@@ -117,6 +138,15 @@ function yoast_bulk_meta_editor_page()
     if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
     $posts_per_page = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
     $enabled_columns = ybme_get_enabled_columns();
+    $selected_langs = array();
+    $lang_flags = array();
+    if (ybme_wpml_active()) {
+        $selected_langs = get_option('ybme_languages', array());
+        $langs = ybme_get_wpml_languages();
+        foreach ($langs as $code => $lang) {
+            $lang_flags[$code] = $lang['country_flag_url'];
+        }
+    }
     // Get public post types and filter based on settings
     $all_public_types = get_post_types(array('public' => true), 'names');
     $selected_types = get_option('post_types', ['post', 'page']);
@@ -157,6 +187,10 @@ function yoast_bulk_meta_editor_page()
         'orderby'     => 'post_type',
         'order'       => 'DESC',
     );
+    if (ybme_wpml_active()) {
+        $args['suppress_filters'] = false;
+        $args['lang'] = '';
+    }
     $all_posts = get_posts($args);
 
     $available_cols = ybme_get_available_columns();
@@ -169,6 +203,16 @@ function yoast_bulk_meta_editor_page()
     echo '</tr></thead><tbody>';
     foreach ($all_posts as $post) {
         $page_title = get_the_title($post->ID);
+        $post_lang = '';
+        if (ybme_wpml_active()) {
+            $info = apply_filters('wpml_post_language_details', null, $post->ID);
+            if (isset($info['language_code'])) {
+                $post_lang = $info['language_code'];
+            }
+            if (!empty($selected_langs) && !in_array($post_lang, $selected_langs)) {
+                continue;
+            }
+        }
         $page_title_link = get_edit_post_link($post->ID);
         $post_type = get_post_type($post->ID);
         $post_meta_description = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
@@ -188,9 +232,14 @@ function yoast_bulk_meta_editor_page()
         $row .= ' data-title="' . esc_attr(strtolower($page_title)) . '"';
         $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
         $row .= ' data-post-type="' . esc_attr($post_type) . '"';
-        $row .= '>'; 
+        if ($post_lang) { $row .= ' data-language="' . esc_attr($post_lang) . '"'; }
+        $row .= '>';
         foreach ($enabled_columns as $col) {
             switch ($col) {
+                case 'language_flag':
+                    $flag = isset($lang_flags[$post_lang]) ? $lang_flags[$post_lang] : '';
+                    $row .= '<td>' . ($flag ? '<img src="' . esc_url($flag) . '" alt="" style="width:18px;" />' : esc_html($post_lang)) . '</td>';
+                    break;
                 case 'title':
                     $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
                     break;
@@ -238,6 +287,9 @@ function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_delete_on_blank');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_rows_per_page');
+    if (ybme_wpml_active()) {
+        register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_languages');
+    }
 }
 
 // Create settings page
@@ -273,6 +325,18 @@ function yoast_bulk_meta_editor_settings_page() {
                     echo '<label for="col_' . $key . '">' . esc_html($info['label']) . '</label><br>';
                 }
             ?>
+
+            <?php if (ybme_wpml_active()) : ?>
+                <?php $langs = ybme_get_wpml_languages(); $sel_langs = get_option('ybme_languages', array()); ?>
+                <h2 style="margin-top:20px;">
+                    <?php echo esc_html__('Select languages:', YBME_TEXT_DOMAIN); ?>
+                </h2>
+                <p><?php echo sprintf(esc_html__('%d languages detected', YBME_TEXT_DOMAIN), count($langs)); ?></p>
+                <?php foreach ($langs as $code => $lang) {
+                    echo '<input type="checkbox" name="ybme_languages[]" value="' . esc_attr($code) . '"' . (in_array($code, $sel_langs) ? ' checked' : '') . '>'; 
+                    echo '<label>' . esc_html($lang['native_name']) . '</label><br>'; 
+                } ?>
+            <?php endif; ?>
 
             <h2 style="margin-top:20px;"><?php echo esc_html__('Rows per page:', YBME_TEXT_DOMAIN); ?></h2>
             <?php
@@ -384,9 +448,30 @@ function yoast_bulk_meta_editor_load_more_posts()
         'orderby'     => 'post_type',
         'order'       => 'DESC',
     );
+    $selected_langs = array();
+    $lang_flags = array();
+    if (ybme_wpml_active()) {
+        $args['suppress_filters'] = false;
+        $args['lang'] = '';
+        $selected_langs = get_option('ybme_languages', array());
+        $langs = ybme_get_wpml_languages();
+        foreach ($langs as $code => $lang) {
+            $lang_flags[$code] = $lang['country_flag_url'];
+        }
+    }
     $posts = get_posts($args);
     foreach ($posts as $post) {
         $page_title = get_the_title($post->ID);
+        $post_lang = '';
+        if (ybme_wpml_active()) {
+            $info = apply_filters('wpml_post_language_details', null, $post->ID);
+            if (isset($info['language_code'])) {
+                $post_lang = $info['language_code'];
+            }
+            if (!empty($selected_langs) && !in_array($post_lang, $selected_langs)) {
+                continue;
+            }
+        }
         $page_title_link = get_edit_post_link($post->ID);
         $post_type = get_post_type($post->ID);
         $post_meta_description = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
@@ -400,9 +485,14 @@ function yoast_bulk_meta_editor_load_more_posts()
         $row .= ' data-title="' . esc_attr(strtolower($page_title)) . '"';
         $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
         $row .= ' data-post-type="' . esc_attr($post_type) . '"';
+        if ($post_lang) { $row .= ' data-language="' . esc_attr($post_lang) . '"'; }
         $row .= '>';
         foreach ($enabled_columns as $col) {
             switch ($col) {
+                case 'language_flag':
+                    $flag = isset($lang_flags[$post_lang]) ? $lang_flags[$post_lang] : '';
+                    $row .= '<td>' . ($flag ? '<img src="' . esc_url($flag) . '" alt="" style="width:18px;" />' : esc_html($post_lang)) . '</td>';
+                    break;
                 case 'title':
                     $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
                     break;
