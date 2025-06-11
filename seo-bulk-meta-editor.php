@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.4.0
+ * Version: 1.4.1
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -10,7 +10,8 @@
  * Domain Path: /languages
 */
 
-define('YBME_POSTS_PER_PAGE', 50);
+// Default number of rows shown in the table when no setting is saved.
+define('YBME_POSTS_PER_PAGE', 20);
 
 define('YBME_TEXT_DOMAIN', 'seo-bulk-meta-editor');
 
@@ -114,7 +115,7 @@ function yoast_bulk_meta_editor_create_menu() {
 function yoast_bulk_meta_editor_page()
 {
     if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
-    $posts_per_page = YBME_POSTS_PER_PAGE;
+    $posts_per_page = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
     $enabled_columns = ybme_get_enabled_columns();
     // Get public post types and filter based on settings
     $all_public_types = get_post_types(array('public' => true), 'names');
@@ -236,6 +237,7 @@ function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_delete_on_blank');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_rows_per_page');
 }
 
 // Create settings page
@@ -270,6 +272,12 @@ function yoast_bulk_meta_editor_settings_page() {
                     echo '<input type="checkbox" id="col_' . $key . '" name="ybme_enabled_columns[]" value="' . $key . '"' . (in_array($key, $selected_columns) ? ' checked' : '') . '>';
                     echo '<label for="col_' . $key . '">' . esc_html($info['label']) . '</label><br>';
                 }
+            ?>
+
+            <h2 style="margin-top:20px;"><?php echo esc_html__('Rows per page:', YBME_TEXT_DOMAIN); ?></h2>
+            <?php
+                $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
+                echo '<input type="number" min="1" style="width:60px;" name="ybme_rows_per_page" value="' . $rows . '" />';
             ?>
 
             <h2 style="margin-top:20px;"><?php echo esc_html__('Allowed Roles:', YBME_TEXT_DOMAIN); ?></h2>
@@ -319,8 +327,9 @@ function enqueue_admin_scripts()
 
         // Enqueue our custom script
         wp_enqueue_script('bulk-meta-editor', plugins_url('/js/bulk-meta-editor.js', __FILE__), array('jquery', 'jquery-tablesorter', 'jquery-ui-sortable'), '1.0', true);
+        $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
         wp_localize_script('bulk-meta-editor', 'bulk_editor_vars', array(
-            'posts_per_page' => YBME_POSTS_PER_PAGE,
+            'posts_per_page' => $rows,
             'i18n' => array(
                 'meta_updated'    => __('Meta info updated successfully', YBME_TEXT_DOMAIN),
                 'update_failed'   => __('Failed to update meta info', YBME_TEXT_DOMAIN),
@@ -366,8 +375,9 @@ function yoast_bulk_meta_editor_load_more_posts()
     if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
     $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
     $enabled_columns = ybme_get_enabled_columns();
+    $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
     $args = array(
-        'numberposts' => YBME_POSTS_PER_PAGE,
+        'numberposts' => $rows,
         'offset'      => $offset,
         'post_type'   => get_option('post_types', ['post', 'page']),
         'post_status' => 'publish',

@@ -14,6 +14,7 @@ Yoast SEO Bulk Meta Editor is a small WordPress plugin that adds a dedicated adm
 - Filter rows by search text, post type and category.
 - Choose which post types and columns appear from the plugin's **Settings** page.
 - Responsive table with a "Load More" button for large datasets.
+- Set how many rows appear per page (defaults to 20).
 - Requires the [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) plugin to be active.
 
 ### Premium
