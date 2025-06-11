@@ -99,3 +99,15 @@
     margin-top: 20px;
     text-align: left;
 }
+
+.ybme-upsell {
+    border: 2px dashed #ffba00;
+    background: #fffbe5;
+    padding: 15px;
+    margin-top: 20px;
+    text-align: center;
+}
+
+.ybme-upsell-subtext {
+    margin-top: 10px;
+}
