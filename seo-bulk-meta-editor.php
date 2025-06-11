@@ -291,11 +291,12 @@ function yoast_bulk_meta_editor_settings_page() {
                 $del = get_option('ybme_delete_on_blank', 0);
                 echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> ' . esc_html__('Delete meta values when CSV cells are blank', YBME_TEXT_DOMAIN) . '</label>';
             ?>
-            <div class="ybme-upsell">
-                <p><strong><?php echo esc_html__('Bulk-edit metadata in seconds', YBME_TEXT_DOMAIN); ?></strong></p>
-                <p><strong><?php echo esc_html__('Offline backups you can trust', YBME_TEXT_DOMAIN); ?></strong></p>
-                <p><strong><?php echo esc_html__('Boost your WP workflow', YBME_TEXT_DOMAIN); ?></strong></p>
-                <p class="ybme-upsell-subtext"><strong><?php echo esc_html__('Why go PRO?', YBME_TEXT_DOMAIN); ?></strong><br/><?php echo esc_html__('Unlock CSV import/export and secure backups for rapid SEO edits.', YBME_TEXT_DOMAIN); ?></p>
+            <div class="ybme-banner">
+                <h2><?php echo esc_html__('Bulk-edit metadata in seconds', YBME_TEXT_DOMAIN); ?></h2>
+                <ul>
+                    <li><?php echo esc_html__('Offline backups you can trust', YBME_TEXT_DOMAIN); ?></li>
+                    <li><?php echo esc_html__('Boost your WP workflow', YBME_TEXT_DOMAIN); ?></li>
+                </ul>
             </div>
 
             <?php submit_button(); ?>
@@ -438,9 +439,16 @@ function ybme_csv_tools_page() {
         return;
     }
 
+    $preview = array();
+    $dry_run = false;
     if (isset($_POST['ybme_import_csv']) && !empty($_FILES['ybme_csv_file']['tmp_name'])) {
-        ybme_import_csv($_FILES['ybme_csv_file']);
-        echo '<div class="updated notice"><p>' . esc_html__('Import completed.', YBME_TEXT_DOMAIN) . '</p></div>';
+        $dry_run = isset($_POST['ybme_dry_run']);
+        $preview = ybme_import_csv($_FILES['ybme_csv_file'], $dry_run);
+        if ($dry_run) {
+            echo '<div class="updated notice"><p>' . esc_html__('Preview only. No changes saved.', YBME_TEXT_DOMAIN) . '</p></div>';
+        } else {
+            echo '<div class="updated notice"><p>' . esc_html__('Import completed.', YBME_TEXT_DOMAIN) . '</p></div>';
+        }
     }
 
     ?>
@@ -450,8 +458,38 @@ function ybme_csv_tools_page() {
     </form>
     <form method="post" enctype="multipart/form-data" style="margin-top:20px;">
         <input type="file" name="ybme_csv_file" accept=".csv" required />
+        <label style="margin-left:10px;">
+            <input type="checkbox" name="ybme_dry_run" value="1" <?php checked($dry_run, true); ?> />
+            <?php echo esc_html__('Dry run: preview only', YBME_TEXT_DOMAIN); ?>
+        </label>
         <?php submit_button(__('Import CSV', YBME_TEXT_DOMAIN)); ?>
     </form>
+
+    <?php if ($dry_run && !empty($preview)) : ?>
+        <h2><?php echo esc_html__('Planned Changes', YBME_TEXT_DOMAIN); ?></h2>
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th><?php echo esc_html__('Post ID', YBME_TEXT_DOMAIN); ?></th>
+                    <th><?php echo esc_html__('Meta Field', YBME_TEXT_DOMAIN); ?></th>
+                    <th><?php echo esc_html__('Old Value', YBME_TEXT_DOMAIN); ?></th>
+                    <th><?php echo esc_html__('New Value', YBME_TEXT_DOMAIN); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($preview as $change) : ?>
+                <tr>
+                    <td><?php echo esc_html($change['post_id']); ?></td>
+                    <td><?php echo esc_html($change['meta_key']); ?></td>
+                    <td><?php echo esc_html(is_array($change['old']) ? implode('|', $change['old']) : $change['old']); ?></td>
+                    <td><?php echo esc_html(is_array($change['new']) ? implode('|', $change['new']) : $change['new']); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php elseif ($dry_run) : ?>
+        <p><?php echo esc_html__('No changes detected in the CSV file.', YBME_TEXT_DOMAIN); ?></p>
+    <?php endif; ?>
     </div>
     <?php
 }
@@ -505,17 +543,18 @@ function ybme_export_csv() {
     fclose($out);
 }
 
-function ybme_import_csv($file) {
+function ybme_import_csv($file, $dry_run = false) {
     $delete = get_option('ybme_delete_on_blank', 0);
+    $changes = array();
 
     $handle = fopen($file['tmp_name'], 'r');
     if (!$handle) {
-        return;
+        return $changes;
     }
     $header = fgetcsv($handle);
     if (!$header) {
         fclose($handle);
-        return;
+        return $changes;
     }
 
     $mapping = [
@@ -548,9 +587,13 @@ function ybme_import_csv($file) {
                 continue;
             }
             $val = $row[$index];
+            $old = get_post_meta($post_id, $meta_key, true);
             if ($val === '') {
-                if ($delete) {
-                    delete_post_meta($post_id, $meta_key);
+                if ($delete && $old !== '') {
+                    $changes[] = array('post_id' => $post_id, 'meta_key' => $meta_key, 'old' => $old, 'new' => '');
+                    if (!$dry_run) {
+                        delete_post_meta($post_id, $meta_key);
+                    }
                 }
                 continue;
             }
@@ -559,8 +602,14 @@ function ybme_import_csv($file) {
             } else {
                 $val = sanitize_text_field($val);
             }
-            update_post_meta($post_id, $meta_key, $val);
+            if ($old != $val) {
+                $changes[] = array('post_id' => $post_id, 'meta_key' => $meta_key, 'old' => $old, 'new' => $val);
+                if (!$dry_run) {
+                    update_post_meta($post_id, $meta_key, $val);
+                }
+            }
         }
     }
     fclose($handle);
+    return $changes;
 }
