@@ -6,11 +6,12 @@ jQuery(document).ready(function($) {
 
     function logChange(postId, metaKey, oldValue, newValue) {
         changeHistory.push({postId: postId, metaKey: metaKey, oldValue: oldValue, newValue: newValue});
-        var label = metaKey === '_yoast_wpseo_title' ? 'Title' :
-                    metaKey === '_yoast_wpseo_metadesc' ? 'Meta Description' :
-                    metaKey === '_yoast_wpseo_focuskw' ? 'Keyword' :
-                    metaKey === '_yoast_wpseo_canonical' ? 'Canonical URL' :
-                    metaKey === '_yoast_wpseo_opengraph-title' ? 'Social Title' :
+        var i18n = bulk_editor_vars.i18n;
+        var label = metaKey === '_yoast_wpseo_title' ? i18n.label_title :
+                    metaKey === '_yoast_wpseo_metadesc' ? i18n.label_meta_description :
+                    metaKey === '_yoast_wpseo_focuskw' ? i18n.label_keyword :
+                    metaKey === '_yoast_wpseo_canonical' ? i18n.label_canonical_url :
+                    metaKey === '_yoast_wpseo_opengraph-title' ? i18n.label_social_title :
                     metaKey;
         $('#history-log').append('<li>' + label + ' for post ' + postId + ' updated.</li>');
     }
@@ -136,14 +137,14 @@ jQuery(document).ready(function($) {
                 $.post(ajaxurl, data, function(response) {
                     if (response.success) {
                         // Show success notification
-                        showNotification('Meta info updated successfully', 'success');
+                        showNotification(bulk_editor_vars.i18n.meta_updated, 'success');
                     } else {
                         // Show error notification
-                        showNotification('Failed to update meta info', 'error');
+                        showNotification(bulk_editor_vars.i18n.update_failed, 'error');
                     }
                 }).fail(function(xhr, status, error) {
                     console.log('Failed to update meta info:', error);
-                    showNotification('Failed to update meta info', 'error');
+                    showNotification(bulk_editor_vars.i18n.update_failed, 'error');
                 });
             }
         }
@@ -152,7 +153,7 @@ jQuery(document).ready(function($) {
     $('#undo-btn').click(function() {
         var last = changeHistory.pop();
         if (!last) {
-            showNotification('Nothing to undo', 'error');
+            showNotification(bulk_editor_vars.i18n.nothing_to_undo, 'error');
             return;
         }
 
@@ -174,12 +175,12 @@ jQuery(document).ready(function($) {
 
         $.post(ajaxurl, data, function(response) {
             if (response.success) {
-                showNotification('Change reverted', 'success');
+                showNotification(bulk_editor_vars.i18n.change_reverted, 'success');
             } else {
-                showNotification('Failed to revert change', 'error');
+                showNotification(bulk_editor_vars.i18n.revert_failed, 'error');
             }
         }).fail(function() {
-            showNotification('Failed to revert change', 'error');
+            showNotification(bulk_editor_vars.i18n.revert_failed, 'error');
         });
 
         $('#history-log li').last().remove();
@@ -200,7 +201,7 @@ jQuery(document).ready(function($) {
                 $('#load-more-btn').hide();
             }
         }).fail(function() {
-            showNotification('Failed to load more posts', 'error');
+            showNotification(bulk_editor_vars.i18n.load_failed, 'error');
         });
     });
 
