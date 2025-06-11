@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.2.1
+ * Version: 1.3.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -31,6 +31,11 @@ function ybme_get_enabled_columns() {
     return array_unique(array_merge($defaults, $saved));
 }
 
+function ybme_is_pro() {
+    $key = trim(get_option('ybme_license_key'));
+    return !empty($key);
+}
+
 
 // Check for Yoast SEO plugin on activation
 register_activation_hook(__FILE__, 'check_for_yoast_seo');
@@ -52,6 +57,9 @@ function yoast_bulk_meta_editor_create_menu() {
 
     // Create submenu for settings
     add_submenu_page('yoast-bulk-meta-editor', 'Yoast Bulk Meta Editor Settings', 'Settings', 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
+
+    // CSV import/export page (PRO)
+    add_submenu_page('yoast-bulk-meta-editor', 'CSV Import/Export', 'CSV Import/Export (PRO)', 'manage_options', 'yoast-bulk-meta-editor-csv', 'ybme_csv_tools_page');
 
     // Call register settings function
     add_action('admin_init', 'register_yoast_bulk_meta_editor_settings');
@@ -179,6 +187,7 @@ function yoast_bulk_meta_editor_page()
 function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'post_types');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
 }
 
 // Create settings page
@@ -214,6 +223,19 @@ function yoast_bulk_meta_editor_settings_page() {
                     echo '<label for="col_' . $key . '">' . esc_html($info['label']) . '</label><br>';
                 }
             ?>
+
+            <h2 style="margin-top:20px;">License Key (PRO):</h2>
+            <?php
+                $license = esc_attr(get_option('ybme_license_key', ''));
+                echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="Enter license key" />';
+            ?>
+
+            <div class="ybme-upsell">
+                <p><strong>Bulk-edit metadata in seconds</strong></p>
+                <p><strong>Offline backups you can trust</strong></p>
+                <p><strong>Boost your WP workflow</strong></p>
+                <p class="ybme-upsell-subtext"><strong>Why go PRO?</strong><br/>Unlock CSV import/export and secure backups for rapid SEO edits.</p>
+            </div>
 
             <?php submit_button(); ?>
         </form>
@@ -322,4 +344,102 @@ function yoast_bulk_meta_editor_load_more_posts()
     }
     wp_reset_postdata();
     wp_die();
+}
+
+function ybme_csv_tools_page() {
+    echo '<div class="wrap"><h1>CSV Import/Export</h1>';
+
+    if (!ybme_is_pro()) {
+        echo '<p>This feature is available in the PRO version. Enter your license key in Settings to enable it.</p></div>';
+        return;
+    }
+
+    if (isset($_POST['ybme_export_csv'])) {
+        ybme_export_csv();
+        exit;
+    }
+
+    if (isset($_POST['ybme_import_csv']) && !empty($_FILES['ybme_csv_file']['tmp_name'])) {
+        ybme_import_csv($_FILES['ybme_csv_file']);
+        echo '<div class="updated notice"><p>Import completed.</p></div>';
+    }
+
+    ?>
+    <form method="post">
+        <input type="hidden" name="ybme_export_csv" value="1" />
+        <?php submit_button('Export CSV'); ?>
+    </form>
+    <form method="post" enctype="multipart/form-data" style="margin-top:20px;">
+        <input type="file" name="ybme_csv_file" accept=".csv" required />
+        <?php submit_button('Import CSV'); ?>
+    </form>
+    </div>
+    <?php
+}
+
+function ybme_export_csv() {
+    $posts = get_posts([
+        'numberposts' => -1,
+        'post_type'   => get_option('post_types', ['post','page']),
+        'post_status' => 'publish',
+        'orderby'     => 'ID',
+        'order'       => 'ASC'
+    ]);
+
+    $cols = ybme_get_available_columns();
+    $headers = ['ID','post_title'];
+    foreach ($cols as $info) {
+        if (isset($info['meta_key'])) {
+            $headers[] = $info['meta_key'];
+        }
+    }
+
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="ybme-export.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, $headers);
+    foreach ($posts as $p) {
+        $row = [$p->ID, $p->post_title];
+        foreach ($cols as $info) {
+            if (isset($info['meta_key'])) {
+                $row[] = get_post_meta($p->ID, $info['meta_key'], true);
+            }
+        }
+        fputcsv($out, $row);
+    }
+    fclose($out);
+}
+
+function ybme_import_csv($file) {
+    $cols = ybme_get_available_columns();
+    $meta_keys = [];
+    foreach ($cols as $info) {
+        if (isset($info['meta_key'])) {
+            $meta_keys[$info['meta_key']] = $info['meta_key'];
+        }
+    }
+
+    $handle = fopen($file['tmp_name'], 'r');
+    if (!$handle) {
+        return;
+    }
+    $header = fgetcsv($handle);
+    if (!$header) {
+        fclose($handle);
+        return;
+    }
+
+    while (($row = fgetcsv($handle)) !== false) {
+        $data = array_combine($header, $row);
+        if (!isset($data['ID'])) {
+            continue;
+        }
+        $post_id = intval($data['ID']);
+        foreach ($meta_keys as $col) {
+            if (isset($data[$col])) {
+                update_post_meta($post_id, $col, sanitize_text_field($data[$col]));
+            }
+        }
+    }
+    fclose($handle);
 }
