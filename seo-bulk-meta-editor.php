@@ -2,13 +2,34 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
 */
 
 define('YBME_POSTS_PER_PAGE', 50);
+
+function ybme_get_available_columns() {
+    return array(
+        'title'            => array('label' => 'Title'),
+        'post_type'        => array('label' => 'Post Type'),
+        'meta_title'       => array('label' => 'Meta Title', 'meta_key' => '_yoast_wpseo_title'),
+        'meta_description' => array('label' => 'Meta Description', 'meta_key' => '_yoast_wpseo_metadesc'),
+        'keyword'          => array('label' => 'Keyword', 'meta_key' => '_yoast_wpseo_focuskw'),
+        'canonical_url'    => array('label' => 'Canonical URL', 'meta_key' => '_yoast_wpseo_canonical'),
+        'social_title'     => array('label' => 'Social Title', 'meta_key' => '_yoast_wpseo_opengraph-title'),
+    );
+}
+
+function ybme_get_enabled_columns() {
+    $defaults = array('title','post_type','meta_title','meta_description','keyword');
+    $saved = get_option('ybme_enabled_columns');
+    if (!is_array($saved)) {
+        $saved = array();
+    }
+    return array_unique(array_merge($defaults, $saved));
+}
 
 
 // Check for Yoast SEO plugin on activation
@@ -40,6 +61,7 @@ function yoast_bulk_meta_editor_create_menu() {
 function yoast_bulk_meta_editor_page()
 {
     $posts_per_page = YBME_POSTS_PER_PAGE;
+    $enabled_columns = ybme_get_enabled_columns();
     // Get all public post types
     $post_types = get_post_types(array('public' => true), 'names');
     // Only include categories that contain posts
@@ -75,7 +97,14 @@ function yoast_bulk_meta_editor_page()
     );
     $all_posts = get_posts($args);
 
-    echo '<thead><tr><th>Title</th><th>Post Type</th><th>Meta Title</th><th>Meta Description</th><th>Keyword</th></tr></thead><tbody>';
+    $available_cols = ybme_get_available_columns();
+    echo '<thead><tr>';
+    foreach ($enabled_columns as $col) {
+        if (isset($available_cols[$col])) {
+            echo '<th>' . esc_html($available_cols[$col]['label']) . '</th>';
+        }
+    }
+    echo '</tr></thead><tbody>';
     foreach ($all_posts as $post) {
         $page_title = get_the_title($post->ID);
         $page_title_link = get_edit_post_link($post->ID);
@@ -90,17 +119,39 @@ function yoast_bulk_meta_editor_page()
         // displayed and can be updated properly.
         $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
         $post_meta_title = get_post_meta($post->ID, '_yoast_wpseo_title', true);
+        $canonical = get_post_meta($post->ID, '_yoast_wpseo_canonical', true);
+        $social_title = get_post_meta($post->ID, '_yoast_wpseo_opengraph-title', true);
         $cat_slugs = wp_get_post_terms($post->ID, 'category', array('fields' => 'slugs'));
         $row  = '<tr data-post-id="' . $post->ID . '"';
         $row .= ' data-title="' . esc_attr(strtolower($page_title)) . '"';
         $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
         $row .= ' data-post-type="' . esc_attr($post_type) . '"';
         $row .= '>'; 
-        $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
-        $row .= '<td>' . ucfirst($post_type) . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+        foreach ($enabled_columns as $col) {
+            switch ($col) {
+                case 'title':
+                    $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
+                    break;
+                case 'post_type':
+                    $row .= '<td>' . ucfirst($post_type) . '</td>';
+                    break;
+                case 'meta_title':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
+                    break;
+                case 'meta_description':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
+                    break;
+                case 'keyword':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+                    break;
+                case 'canonical_url':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_canonical">' . $canonical . '</td>';
+                    break;
+                case 'social_title':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_opengraph-title">' . $social_title . '</td>';
+                    break;
+            }
+        }
         $row .= '</tr>';
         echo $row;
     }
@@ -120,6 +171,7 @@ function yoast_bulk_meta_editor_page()
 // Register our settings
 function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'post_types');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
 }
 
 // Create settings page
@@ -129,6 +181,8 @@ function yoast_bulk_meta_editor_settings_page() {
     $all_post_types = get_post_types(array('public' => true), 'names');
     // Get selected post types
     $selected_post_types = get_option('post_types', ['post', 'page']);
+    $all_columns = ybme_get_available_columns();
+    $selected_columns = ybme_get_enabled_columns();
     ?>
     <div class="wrap">
         <h1>Yoast Bulk Meta Editor Settings</h1>
@@ -138,10 +192,19 @@ function yoast_bulk_meta_editor_settings_page() {
             <?php do_settings_sections('yoast-bulk-meta-editor-settings-group'); ?>
 
             <h2>Select post types:</h2>
+
             <?php
                 foreach ($all_post_types as $post_type) {
                     echo '<input type="checkbox" id="' . $post_type . '" name="post_types[]" value="' . $post_type . '"' . (in_array($post_type, $selected_post_types) ? ' checked' : '') . '>';
                     echo '<label for="' . $post_type . '">' . ucfirst($post_type) . '</label><br>';
+                }
+            ?>
+
+            <h2 style="margin-top:20px;">Select columns:</h2>
+            <?php
+                foreach ($all_columns as $key => $info) {
+                    echo '<input type="checkbox" id="col_' . $key . '" name="ybme_enabled_columns[]" value="' . $key . '"' . (in_array($key, $selected_columns) ? ' checked' : '') . '>';
+                    echo '<label for="col_' . $key . '">' . esc_html($info['label']) . '</label><br>';
                 }
             ?>
 
@@ -196,6 +259,7 @@ add_action('wp_ajax_load_more_posts', 'yoast_bulk_meta_editor_load_more_posts');
 function yoast_bulk_meta_editor_load_more_posts()
 {
     $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+    $enabled_columns = ybme_get_enabled_columns();
     $args = array(
         'numberposts' => YBME_POSTS_PER_PAGE,
         'offset'      => $offset,
@@ -212,6 +276,8 @@ function yoast_bulk_meta_editor_load_more_posts()
         $post_meta_description = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
         $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
         $post_meta_title = get_post_meta($post->ID, '_yoast_wpseo_title', true);
+        $canonical = get_post_meta($post->ID, '_yoast_wpseo_canonical', true);
+        $social_title = get_post_meta($post->ID, '_yoast_wpseo_opengraph-title', true);
         $cat_slugs = wp_get_post_terms($post->ID, 'category', array('fields' => 'slugs'));
 
         $row  = '<tr data-post-id="' . $post->ID . '"';
@@ -219,11 +285,31 @@ function yoast_bulk_meta_editor_load_more_posts()
         $row .= ' data-categories="' . esc_attr(implode(',', $cat_slugs)) . '"';
         $row .= ' data-post-type="' . esc_attr($post_type) . '"';
         $row .= '>';
-        $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
-        $row .= '<td>' . ucfirst($post_type) . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
-        $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+        foreach ($enabled_columns as $col) {
+            switch ($col) {
+                case 'title':
+                    $row .= '<td><a href="' . $page_title_link . '">' . $page_title . '</a></td>';
+                    break;
+                case 'post_type':
+                    $row .= '<td>' . ucfirst($post_type) . '</td>';
+                    break;
+                case 'meta_title':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td>';
+                    break;
+                case 'meta_description':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td>';
+                    break;
+                case 'keyword':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td>';
+                    break;
+                case 'canonical_url':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_canonical">' . $canonical . '</td>';
+                    break;
+                case 'social_title':
+                    $row .= '<td class="editable" data-meta-key="_yoast_wpseo_opengraph-title">' . $social_title . '</td>';
+                    break;
+            }
+        }
         $row .= '</tr>';
         echo $row;
     }
