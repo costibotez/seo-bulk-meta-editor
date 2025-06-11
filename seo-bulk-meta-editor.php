@@ -457,41 +457,29 @@ function ybme_csv_tools_page() {
 }
 
 function ybme_export_csv() {
-    global $wpdb;
-
     $posts = get_posts([
         'numberposts' => -1,
-        'post_type'   => get_option('post_types', ['post','page']),
+        'post_type'   => get_option('post_types', ['post', 'page']),
         'post_status' => 'any',
         'orderby'     => 'ID',
-        'order'       => 'ASC'
+        'order'       => 'ASC',
     ]);
 
     if (empty($posts)) {
         return;
     }
 
-    $post_ids = wp_list_pluck($posts, 'ID');
-    $placeholders = implode(',', array_fill(0, count($post_ids), '%d'));
-    $meta_keys = [];
-    if ($placeholders) {
-        $query = $wpdb->prepare("SELECT DISTINCT meta_key FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders)", $post_ids);
-        $meta_keys = $wpdb->get_col($query);
-    }
-    sort($meta_keys);
-
     $headers = [
         'post_id',
         'post_type',
         'post_title',
-        'post_slug',
         'post_status',
-        'post_date',
-        'post_modified'
+        'yoast keyword',
+        'yoast meta description',
+        'yoast meta title',
+        'yoast canonical url',
+        'yoast social title',
     ];
-    foreach ($meta_keys as $k) {
-        $headers[] = 'meta_' . $k;
-    }
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ybme-export.csv"');
@@ -503,21 +491,17 @@ function ybme_export_csv() {
             $p->ID,
             $p->post_type,
             $p->post_title,
-            $p->post_name,
             $p->post_status,
-            mysql2date('Y-m-d H:i:s', $p->post_date, false),
-            mysql2date('Y-m-d H:i:s', $p->post_modified, false)
+            get_post_meta($p->ID, '_yoast_wpseo_focuskw', true),
+            get_post_meta($p->ID, '_yoast_wpseo_metadesc', true),
+            get_post_meta($p->ID, '_yoast_wpseo_title', true),
+            get_post_meta($p->ID, '_yoast_wpseo_canonical', true),
+            get_post_meta($p->ID, '_yoast_wpseo_opengraph-title', true),
         ];
 
-        foreach ($meta_keys as $k) {
-            $val = get_post_meta($p->ID, $k, true);
-            if (is_array($val)) {
-                $val = implode('|', $val);
-            }
-            $row[] = $val;
-        }
         fputcsv($out, $row);
     }
+
     fclose($out);
 }
 
@@ -534,13 +518,24 @@ function ybme_import_csv($file) {
         return;
     }
 
+    $mapping = [
+        'yoast keyword'         => '_yoast_wpseo_focuskw',
+        'yoast meta description' => '_yoast_wpseo_metadesc',
+        'yoast meta title'       => '_yoast_wpseo_title',
+        'yoast canonical url'    => '_yoast_wpseo_canonical',
+        'yoast social title'     => '_yoast_wpseo_opengraph-title',
+    ];
+
     $meta_cols = [];
     foreach ($header as $index => $name) {
-        if (strpos($name, 'meta_') === 0) {
-            $meta_cols[$index] = substr($name, 5);
+        $key = strtolower(trim($name));
+        if (isset($mapping[$key])) {
+            $meta_cols[$index] = $mapping[$key];
         }
     }
-    $post_index = array_search('post_id', $header);
+
+    $lower_header = array_map('strtolower', $header);
+    $post_index = array_search('post_id', $lower_header);
 
     while (($row = fgetcsv($handle)) !== false) {
         $post_id = ($post_index !== false && isset($row[$post_index])) ? intval($row[$post_index]) : 0;
