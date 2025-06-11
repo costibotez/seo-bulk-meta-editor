@@ -58,8 +58,44 @@ jQuery(document).ready(function($) {
         var metaKey = $(this).data('meta-key');
 
         $(this).addClass('cellEditing');
-        $(this).html('<textarea>' + originalContent + '</textarea>');
-        $(this).children('textarea').focus().one('blur', function() {
+
+        var limit = null;
+        if (metaKey === '_yoast_wpseo_title') {
+            limit = 60;
+        } else if (metaKey === '_yoast_wpseo_metadesc') {
+            limit = 160;
+        }
+
+        var $textarea = $('<textarea>' + originalContent + '</textarea>');
+        var $counter = $('<div class="char-counter"></div>');
+
+        function updateCounter() {
+            if (limit === null) {
+                $counter.text('');
+                return;
+            }
+            var remaining = limit - $textarea.val().length;
+            $counter.removeClass('ok warning exceeded');
+            if (remaining < 0) {
+                $counter.addClass('exceeded');
+                $counter.text(Math.abs(remaining) + ' over limit');
+            } else {
+                if (remaining < 10) {
+                    $counter.addClass('warning');
+                } else {
+                    $counter.addClass('ok');
+                }
+                $counter.text(remaining + ' characters remaining');
+            }
+        }
+
+        $textarea.on('input', updateCounter);
+        updateCounter();
+
+        $(this).html('');
+        $(this).append($textarea).append($counter);
+
+        $textarea.focus().one('blur', function() {
             var newContent = $(this).val();
             var $parent = $(this).parent();
             $parent.text(newContent);

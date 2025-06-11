@@ -75,3 +75,21 @@
     display: block;
     margin: 20px auto;
 }
+
+/* Character counter styling */
+.char-counter {
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.char-counter.ok {
+    color: #4CAF50;
+}
+
+.char-counter.warning {
+    color: #E09100;
+}
+
+.char-counter.exceeded {
+    color: #f44336;
+}
