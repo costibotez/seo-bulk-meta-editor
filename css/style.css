@@ -100,7 +100,7 @@
     text-align: left;
 }
 
-.ybme-upsell {
+.ybme-banner {
     border: 2px solid #ffba00;
     background: linear-gradient(135deg, #fffbe5, #ffffff);
     padding: 20px;
@@ -110,11 +110,26 @@
     border-radius: 6px;
 }
 
-.ybme-upsell p {
-    margin: 8px 0;
+.ybme-banner h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
 }
 
-.ybme-upsell-subtext {
-    margin-top: 12px;
-    font-size: 14px;
+.ybme-banner ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.ybme-banner li {
+    position: relative;
+    padding-left: 20px;
+    margin: 5px 0;
+}
+
+.ybme-banner li:before {
+    content: "\2713";
+    position: absolute;
+    left: 0;
+    color: #4CAF50;
 }
