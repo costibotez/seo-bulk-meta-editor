@@ -8,7 +8,10 @@ jQuery(document).ready(function($) {
         changeHistory.push({postId: postId, metaKey: metaKey, oldValue: oldValue, newValue: newValue});
         var label = metaKey === '_yoast_wpseo_title' ? 'Title' :
                     metaKey === '_yoast_wpseo_metadesc' ? 'Meta Description' :
-                    'Keyword';
+                    metaKey === '_yoast_wpseo_focuskw' ? 'Keyword' :
+                    metaKey === '_yoast_wpseo_canonical' ? 'Canonical URL' :
+                    metaKey === '_yoast_wpseo_opengraph-title' ? 'Social Title' :
+                    metaKey;
         $('#history-log').append('<li>' + label + ' for post ' + postId + ' updated.</li>');
     }
 
@@ -69,7 +72,7 @@ jQuery(document).ready(function($) {
         $(this).addClass('cellEditing');
 
         var limit = null;
-        if (metaKey === '_yoast_wpseo_title') {
+        if (metaKey === '_yoast_wpseo_title' || metaKey === '_yoast_wpseo_opengraph-title') {
             limit = 60;
         } else if (metaKey === '_yoast_wpseo_metadesc') {
             limit = 160;
