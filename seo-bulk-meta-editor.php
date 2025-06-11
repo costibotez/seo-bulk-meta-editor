@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.0
+ * Version: 1.0.1
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -61,9 +61,16 @@ function yoast_bulk_meta_editor_page()
         $page_title_link = get_edit_post_link($post->ID);
         $post_type = get_post_type($post->ID);
         $post_meta_description = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
-        $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw_text_input', true);
+        // Fetch the Yoast focus keyphrase for the post.
+        // Yoast stores the focus keyphrase in the _yoast_wpseo_focuskw meta key.
+        // Previous versions of this plugin attempted to read the value from
+        // `_yoast_wpseo_focuskw_text_input`, which no longer exists in recent
+        // versions of Yoast SEO and resulted in keywords not appearing in the
+        // table. Using the correct meta key ensures that the current value is
+        // displayed and can be updated properly.
+        $post_meta_keywords = get_post_meta($post->ID, '_yoast_wpseo_focuskw', true);
         $post_meta_title = get_post_meta($post->ID, '_yoast_wpseo_title', true);
-        echo '<tr data-post-id="' . $post->ID . '"><td><a href="' . $page_title_link . '">'. $page_title . '</a></td><td>' . ucfirst($post_type) . '</td><td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td><td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td><td class="editable" data-meta-key="_yoast_wpseo_focuskw_text_input">' . $post_meta_keywords . '</td></tr>';
+        echo '<tr data-post-id="' . $post->ID . '"><td><a href="' . $page_title_link . '">'. $page_title . '</a></td><td>' . ucfirst($post_type) . '</td><td class="editable" data-meta-key="_yoast_wpseo_title">' . $post_meta_title . '</td><td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . $post_meta_description . '</td><td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . $post_meta_keywords . '</td></tr>';
     }
     echo '</tbody>';
     echo '</table>';
