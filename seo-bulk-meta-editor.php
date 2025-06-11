@@ -10,6 +10,7 @@
 
 define('YBME_POSTS_PER_PAGE', 50);
 
+define('YBME_CAPABILITY', 'manage_ybme_meta');
 function ybme_get_available_columns() {
     return array(
         'title'            => array('label' => 'Title'),
@@ -38,7 +39,8 @@ function ybme_is_pro() {
 
 
 // Check for Yoast SEO plugin on activation
-register_activation_hook(__FILE__, 'check_for_yoast_seo');
+register_activation_hook(__FILE__, 'ybme_activate');
+register_deactivation_hook(__FILE__, 'ybme_deactivate');
 
 function check_for_yoast_seo()
 {
@@ -47,13 +49,43 @@ function check_for_yoast_seo()
         wp_die('Sorry, but this plugin requires Yoast SEO to be installed and active. <br><a href="' . admin_url('plugins.php') . '">&laquo; Return to Plugins</a>');
     }
 }
+function ybme_apply_role_capabilities($roles) {
+    global $wp_roles;
+    if (!is_array($roles)) {
+        $roles = array("administrator");
+    }
+    foreach ($wp_roles->roles as $role => $info) {
+        $obj = get_role($role);
+        if (!$obj) {
+            continue;
+        }
+        if (in_array($role, $roles, true)) {
+            $obj->add_cap(YBME_CAPABILITY);
+        } else {
+            $obj->remove_cap(YBME_CAPABILITY);
+        }
+    }
+}
+
+function ybme_activate() {
+    check_for_yoast_seo();
+    $roles = get_option("ybme_roles", array("administrator"));
+    ybme_apply_role_capabilities($roles);
+}
+
+function ybme_deactivate() {
+    ybme_apply_role_capabilities(array());
+}
+
+add_action("update_option_ybme_roles", function($old, $new) { ybme_apply_role_capabilities($new); }, 10, 2);
+
 // Hook into the admin menu
 add_action('admin_menu', 'yoast_bulk_meta_editor_create_menu');
 
 // Create new top-level menu
 function yoast_bulk_meta_editor_create_menu() {
     // Create new top-level menu
-    add_menu_page('Yoast Bulk Meta Editor', 'Yoast Bulk Meta Editor', 'administrator', 'yoast-bulk-meta-editor', 'yoast_bulk_meta_editor_page' );
+    add_menu_page('Yoast Bulk Meta Editor', 'Yoast Bulk Meta Editor', YBME_CAPABILITY, 'yoast-bulk-meta-editor', 'yoast_bulk_meta_editor_page' );
 
     // Create submenu for settings
     add_submenu_page('yoast-bulk-meta-editor', 'Yoast Bulk Meta Editor Settings', 'Settings', 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
@@ -68,6 +100,7 @@ function yoast_bulk_meta_editor_create_menu() {
 // Page content
 function yoast_bulk_meta_editor_page()
 {
+    if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
     $posts_per_page = YBME_POSTS_PER_PAGE;
     $enabled_columns = ybme_get_enabled_columns();
     // Get public post types and filter based on settings
@@ -189,6 +222,7 @@ function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_delete_on_blank');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles');
 }
 
 // Create settings page
@@ -225,6 +259,15 @@ function yoast_bulk_meta_editor_settings_page() {
                 }
             ?>
 
+            <h2 style="margin-top:20px;">Allowed Roles:</h2>
+            <?php
+                $all_roles = get_editable_roles();
+                $selected_roles = get_option('ybme_roles', array('administrator'));
+                foreach ($all_roles as $role_slug => $details) {
+                    echo '<input type="checkbox" id="role_' . esc_attr($role_slug) . '" name="ybme_roles[]" value="' . esc_attr($role_slug) . '"' . (in_array($role_slug, $selected_roles) ? ' checked' : '') . '>';
+                    echo '<label for="role_' . esc_attr($role_slug) . '">' . esc_html($details['name']) . '</label><br>';
+                }
+            ?>
             <h2 style="margin-top:20px;">License Key (PRO):</h2>
             <?php
                 $license = esc_attr(get_option('ybme_license_key', ''));
@@ -275,6 +318,7 @@ add_action('wp_ajax_save_meta_info', 'save_meta_info');
 function save_meta_info()
 {
     $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+    if (!current_user_can(YBME_CAPABILITY)) { wp_send_json_error(); wp_die(); }
     $meta_key = isset($_POST['meta_key']) ? sanitize_text_field($_POST['meta_key']) : '';
     $meta_value = isset($_POST['meta_value']) ? sanitize_text_field($_POST['meta_value']) : '';
 
@@ -292,6 +336,7 @@ function save_meta_info()
 add_action('wp_ajax_load_more_posts', 'yoast_bulk_meta_editor_load_more_posts');
 function yoast_bulk_meta_editor_load_more_posts()
 {
+    if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
     $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
     $enabled_columns = ybme_get_enabled_columns();
     $args = array(
