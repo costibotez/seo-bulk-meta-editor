@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -62,8 +62,15 @@ function yoast_bulk_meta_editor_page()
 {
     $posts_per_page = YBME_POSTS_PER_PAGE;
     $enabled_columns = ybme_get_enabled_columns();
-    // Get all public post types
-    $post_types = get_post_types(array('public' => true), 'names');
+    // Get public post types and filter based on settings
+    $all_public_types = get_post_types(array('public' => true), 'names');
+    $selected_types = get_option('post_types', ['post', 'page']);
+    $post_types = array();
+    foreach ($selected_types as $type) {
+        if (in_array($type, $all_public_types, true)) {
+            $post_types[] = $type;
+        }
+    }
     // Only include categories that contain posts
     $categories = get_categories(array('hide_empty' => true));
 
