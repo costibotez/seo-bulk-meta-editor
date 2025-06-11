@@ -352,16 +352,19 @@ function yoast_bulk_meta_editor_load_more_posts()
 }
 
 function ybme_csv_tools_page() {
+    if (isset($_POST['ybme_export_csv'])) {
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+        ybme_export_csv();
+        exit;
+    }
+
     echo '<div class="wrap"><h1>CSV Import/Export</h1>';
 
     if (!ybme_is_pro()) {
         echo '<p>This feature is available in the PRO version. Enter your license key in Settings to enable it.</p></div>';
         return;
-    }
-
-    if (isset($_POST['ybme_export_csv'])) {
-        ybme_export_csv();
-        exit;
     }
 
     if (isset($_POST['ybme_import_csv']) && !empty($_FILES['ybme_csv_file']['tmp_name'])) {
