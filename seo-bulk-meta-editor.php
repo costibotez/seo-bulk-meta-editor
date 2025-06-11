@@ -55,7 +55,7 @@ function yoast_bulk_meta_editor_page()
     );
     $all_posts = get_posts($args);
 
-    echo '<tr><th>Title</th><th>Post Type</th><th>Meta Title</th><th>Meta Description</th><th>Keyword</th></tr>';
+    echo '<thead><tr><th>Title</th><th>Post Type</th><th>Meta Title</th><th>Meta Description</th><th>Keyword</th></tr></thead><tbody>';
     foreach ($all_posts as $post) {
         $page_title = get_the_title($post->ID);
         $page_title_link = get_edit_post_link($post->ID);
@@ -74,9 +74,6 @@ function yoast_bulk_meta_editor_page()
     echo '<a href="https://www.buymeacoffee.com/costinbotez" target="_blank" style="background-color: #FF813F; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Support the plugin 🙌</a>';
     echo '</div>';
 }
-
-// Hook into the admin menu
-add_action('admin_menu', 'yoast_bulk_meta_editor_create_menu');
 
 // Register our settings
 function register_yoast_bulk_meta_editor_settings() {
