@@ -15,6 +15,3 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: seo-bulk-meta-editor.php
-msgid "CSV Import/Export (PRO)"
-msgstr ""
