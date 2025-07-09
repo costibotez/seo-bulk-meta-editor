@@ -19,8 +19,6 @@ Yoast SEO Bulk Meta Editor is a small WordPress plugin that adds a dedicated adm
 - Requires the [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) plugin to be active.
 
 ### Premium
-- CSV Meta Tools for fast import and export of metadata.
-- Optional dry‑run mode to preview changes before importing.
 
 ## Installation
 

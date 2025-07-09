@@ -12,5 +12,3 @@ msgstr "Editor Masivo de Meta Yoast"
 msgid "Settings"
 msgstr "Ajustes"
 
-msgid "CSV Import/Export (PRO)"
-msgstr "Importar/Exportar CSV (PRO)"

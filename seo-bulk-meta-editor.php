@@ -125,8 +125,6 @@ function yoast_bulk_meta_editor_create_menu() {
     // Create submenu for settings
     add_submenu_page('yoast-bulk-meta-editor', __('Yoast Bulk Meta Editor Settings', YBME_TEXT_DOMAIN), __('Settings', YBME_TEXT_DOMAIN), 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
 
-    // CSV import/export page (PRO)
-    add_submenu_page('yoast-bulk-meta-editor', __('CSV Import/Export', YBME_TEXT_DOMAIN), __('CSV Import/Export (PRO)', YBME_TEXT_DOMAIN), 'manage_options', 'yoast-bulk-meta-editor-csv', 'ybme_csv_tools_page');
 
     // Call register settings function
     add_action('admin_init', 'register_yoast_bulk_meta_editor_settings');
@@ -284,7 +282,6 @@ function register_yoast_bulk_meta_editor_settings() {
     register_setting('yoast-bulk-meta-editor-settings-group', 'post_types');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
-    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_delete_on_blank');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles');
     register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_rows_per_page');
     if (ybme_wpml_active()) {
@@ -357,11 +354,6 @@ function yoast_bulk_meta_editor_settings_page() {
             <?php
                 $license = esc_attr(get_option('ybme_license_key', ''));
                 echo '<input type="text" style="width:300px;" name="ybme_license_key" value="' . $license . '" placeholder="' . esc_attr__('Enter license key', YBME_TEXT_DOMAIN) . '" />';
-            ?>
-            <h2 style="margin-top:20px;"><?php echo esc_html__('Import Options:', YBME_TEXT_DOMAIN); ?></h2>
-            <?php
-                $del = get_option('ybme_delete_on_blank', 0);
-                echo '<label><input type="checkbox" name="ybme_delete_on_blank" value="1"' . checked(1, $del, false) . '> ' . esc_html__('Delete meta values when CSV cells are blank', YBME_TEXT_DOMAIN) . '</label>';
             ?>
             <div class="ybme-banner">
                 <h2><?php echo esc_html__('Bulk-edit metadata in seconds', YBME_TEXT_DOMAIN); ?></h2>
@@ -523,193 +515,3 @@ function yoast_bulk_meta_editor_load_more_posts()
     wp_die();
 }
 
-function ybme_csv_tools_page() {
-    if (isset($_POST['ybme_export_csv'])) {
-        if (ob_get_length()) {
-            ob_end_clean();
-        }
-        ybme_export_csv();
-        exit;
-    }
-
-    echo '<div class="wrap"><h1>' . esc_html__('CSV Import/Export', YBME_TEXT_DOMAIN) . '</h1>';
-
-    if (!ybme_is_pro()) {
-        echo '<p>' . esc_html__('This feature is available in the PRO version. Enter your license key in Settings to enable it.', YBME_TEXT_DOMAIN) . '</p></div>';
-        return;
-    }
-
-    $preview = array();
-    $dry_run = false;
-    if (isset($_POST['ybme_import_csv']) && !empty($_FILES['ybme_csv_file']['tmp_name'])) {
-        $dry_run = isset($_POST['ybme_dry_run']);
-        $preview = ybme_import_csv($_FILES['ybme_csv_file'], $dry_run);
-        if ($dry_run) {
-            echo '<div class="updated notice"><p>' . esc_html__('Preview only. No changes saved.', YBME_TEXT_DOMAIN) . '</p></div>';
-        } else {
-            echo '<div class="updated notice"><p>' . esc_html__('Import completed.', YBME_TEXT_DOMAIN) . '</p></div>';
-        }
-    }
-
-    ?>
-    <form method="post">
-        <input type="hidden" name="ybme_export_csv" value="1" />
-        <?php submit_button(__('Export CSV', YBME_TEXT_DOMAIN)); ?>
-    </form>
-    <form method="post" enctype="multipart/form-data" style="margin-top:20px;">
-        <input type="file" name="ybme_csv_file" accept=".csv" required />
-        <label style="margin-left:10px;">
-            <input type="checkbox" name="ybme_dry_run" value="1" <?php checked($dry_run, true); ?> />
-            <?php echo esc_html__('Dry run: preview only', YBME_TEXT_DOMAIN); ?>
-        </label>
-        <?php submit_button(__('Import CSV', YBME_TEXT_DOMAIN)); ?>
-    </form>
-
-    <?php if ($dry_run && !empty($preview)) : ?>
-        <h2><?php echo esc_html__('Planned Changes', YBME_TEXT_DOMAIN); ?></h2>
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th><?php echo esc_html__('Post ID', YBME_TEXT_DOMAIN); ?></th>
-                    <th><?php echo esc_html__('Meta Field', YBME_TEXT_DOMAIN); ?></th>
-                    <th><?php echo esc_html__('Old Value', YBME_TEXT_DOMAIN); ?></th>
-                    <th><?php echo esc_html__('New Value', YBME_TEXT_DOMAIN); ?></th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($preview as $change) : ?>
-                <tr>
-                    <td><?php echo esc_html($change['post_id']); ?></td>
-                    <td><?php echo esc_html($change['meta_key']); ?></td>
-                    <td><?php echo esc_html(is_array($change['old']) ? implode('|', $change['old']) : $change['old']); ?></td>
-                    <td><?php echo esc_html(is_array($change['new']) ? implode('|', $change['new']) : $change['new']); ?></td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php elseif ($dry_run) : ?>
-        <p><?php echo esc_html__('No changes detected in the CSV file.', YBME_TEXT_DOMAIN); ?></p>
-    <?php endif; ?>
-    </div>
-    <?php
-}
-
-function ybme_export_csv() {
-    $posts = get_posts([
-        'numberposts' => -1,
-        'post_type'   => get_option('post_types', ['post', 'page']),
-        'post_status' => 'any',
-        'orderby'     => 'ID',
-        'order'       => 'ASC',
-    ]);
-
-    if (empty($posts)) {
-        return;
-    }
-
-    $headers = [
-        'post_id',
-        'post_type',
-        'post_title',
-        'post_status',
-        'yoast keyword',
-        'yoast meta description',
-        'yoast meta title',
-        'yoast canonical url',
-        'yoast social title',
-    ];
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ybme-export.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, $headers);
-
-    foreach ($posts as $p) {
-        $row = [
-            $p->ID,
-            $p->post_type,
-            $p->post_title,
-            $p->post_status,
-            get_post_meta($p->ID, '_yoast_wpseo_focuskw', true),
-            get_post_meta($p->ID, '_yoast_wpseo_metadesc', true),
-            get_post_meta($p->ID, '_yoast_wpseo_title', true),
-            get_post_meta($p->ID, '_yoast_wpseo_canonical', true),
-            get_post_meta($p->ID, '_yoast_wpseo_opengraph-title', true),
-        ];
-
-        fputcsv($out, $row);
-    }
-
-    fclose($out);
-}
-
-function ybme_import_csv($file, $dry_run = false) {
-    $delete = get_option('ybme_delete_on_blank', 0);
-    $changes = array();
-
-    $handle = fopen($file['tmp_name'], 'r');
-    if (!$handle) {
-        return $changes;
-    }
-    $header = fgetcsv($handle);
-    if (!$header) {
-        fclose($handle);
-        return $changes;
-    }
-
-    $mapping = [
-        'yoast keyword'         => '_yoast_wpseo_focuskw',
-        'yoast meta description' => '_yoast_wpseo_metadesc',
-        'yoast meta title'       => '_yoast_wpseo_title',
-        'yoast canonical url'    => '_yoast_wpseo_canonical',
-        'yoast social title'     => '_yoast_wpseo_opengraph-title',
-    ];
-
-    $meta_cols = [];
-    foreach ($header as $index => $name) {
-        $key = strtolower(trim($name));
-        if (isset($mapping[$key])) {
-            $meta_cols[$index] = $mapping[$key];
-        }
-    }
-
-    $lower_header = array_map('strtolower', $header);
-    $post_index = array_search('post_id', $lower_header);
-
-    while (($row = fgetcsv($handle)) !== false) {
-        $post_id = ($post_index !== false && isset($row[$post_index])) ? intval($row[$post_index]) : 0;
-        if (!$post_id) {
-            continue;
-        }
-
-        foreach ($meta_cols as $index => $meta_key) {
-            if (!isset($row[$index])) {
-                continue;
-            }
-            $val = $row[$index];
-            $old = get_post_meta($post_id, $meta_key, true);
-            if ($val === '') {
-                if ($delete && $old !== '') {
-                    $changes[] = array('post_id' => $post_id, 'meta_key' => $meta_key, 'old' => $old, 'new' => '');
-                    if (!$dry_run) {
-                        delete_post_meta($post_id, $meta_key);
-                    }
-                }
-                continue;
-            }
-            if (strpos($val, '|') !== false) {
-                $val = array_map('sanitize_text_field', explode('|', $val));
-            } else {
-                $val = sanitize_text_field($val);
-            }
-            if ($old != $val) {
-                $changes[] = array('post_id' => $post_id, 'meta_key' => $meta_key, 'old' => $old, 'new' => $val);
-                if (!$dry_run) {
-                    update_post_meta($post_id, $meta_key, $val);
-                }
-            }
-        }
-    }
-    fclose($handle);
-    return $changes;
-}
