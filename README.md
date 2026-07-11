@@ -50,6 +50,27 @@ Yoast SEO Bulk Meta Editor is a WordPress plugin that adds a dedicated admin pag
 5. Use **Yoast Bulk Meta Editor → History** to review or revert past changes
 6. Use **Yoast Bulk Meta Editor → Settings** to choose which post types and columns are shown in the table
 
+## Changelog
+
+### 1.6.0
+- **New:** Live Google (SERP) preview with desktop/mobile layouts that updates while you type.
+- **New:** Per-row SEO health score with a "show only problems" filter.
+- **New:** Bulk find & replace across meta fields, with preview, regex and template variables (`%%title%%`, `%%sitename%%`, `%%sep%%`).
+- **New:** Change history / audit log stored in the database, with one-click revert from a new **History** page.
+- **Security:** Added nonce verification, capability and per-post edit checks to all AJAX handlers.
+- **Security:** Restricted meta writes to an allow-list of Yoast keys and escaped all table output.
+- **Security:** Removed a dead, unsafe legacy script and hardened value sanitization per field.
+- **Improvement:** Refactored row rendering into a single shared helper for consistent output.
+
+### 1.5.0
+- Removed CSV import/export tools and updated the documentation.
+- Fixed a WPML issue where pages were not shown; show pages before posts.
+
+### 1.4.0
+- Added WPML language support with a flag column.
+- Fixed the focus keyword not appearing by reading the correct Yoast meta key.
+- Added configurable rows per page, selectable columns and allowed roles.
+
 ## Contributing
 
 Pull requests and issues are welcome. Feel free to submit improvements or report problems on GitHub.
