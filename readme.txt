@@ -1,11 +1,11 @@
 === Yoast SEO Bulk Meta Editor ===
 Contributors: costibotez
 Donate link: https://www.buymeacoffee.com/costinbotez
-Tags: seo, yoast, meta description, bulk edit, serp preview
+Tags: seo, yoast, rank math, seopress, bulk edit
 Requires at least: 5.0
 Tested up to: 6.5
 Requires PHP: 7.2
-Stable tag: 1.6.0
+Stable tag: 1.12.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -34,11 +34,15 @@ On top of fast inline editing, the plugin helps you write snippets that actually
 * Per-row SEO health score: a traffic-light dot flags missing titles/descriptions/keywords and length problems, with details on hover.
 * "Show only problems" filter to instantly narrow the table to rows that need attention.
 * Bulk find & replace across meta titles, descriptions or keywords for every matching post, with a preview of affected rows before you apply. Supports case sensitivity, regular expressions and template variables (%%title%%, %%sitename%%, %%sep%%).
+* Site-wide SEO audit dashboard: score distribution, missing/over/under-length fields by post type, and duplicate meta title/description detection across posts, with one-click jumps into the editor.
+* Google Search Console integration: connect a property over OAuth and show clicks, impressions, CTR and average position per URL as optional editor columns.
+* AI meta generation: draft meta titles and descriptions from page content with your own Claude or OpenAI key, per row or in bulk, always as a preview you approve before saving.
 
 **Safety & history**
 
 * Change history / audit log: every edit (single, undo, revert or bulk) is recorded to the database with the old value, new value, user and timestamp.
 * One-click revert from the History page.
+* Draft & scheduled changes with an approval workflow: submit edits for review, and let an administrator approve, reject or schedule them for automatic application.
 
 **Security**
 
@@ -46,7 +50,7 @@ On top of fast inline editing, the plugin helps you write snippets that actually
 * Meta writes are restricted to an allow-list of Yoast keys, with per-post edit permission checks.
 * All values are escaped on output and sanitized per field on save.
 
-Requires the [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) plugin to be installed and active.
+Requires one supported SEO plugin to be installed and active: [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/), [Rank Math](https://wordpress.org/plugins/seo-by-rank-math/) or [SEOPress](https://wordpress.org/plugins/wp-seopress/). All in One SEO stores its data in a custom table rather than post meta and is not supported.
 
 == Installation ==
 
@@ -66,9 +70,9 @@ Requires the [Yoast SEO](https://wordpress.org/plugins/wordpress-seo/) plugin to
 
 == Frequently Asked Questions ==
 
-= Does this require Yoast SEO? =
+= Which SEO plugins are supported? =
 
-Yes. The plugin reads and writes Yoast SEO meta keys, so Yoast SEO must be installed and active.
+Yoast SEO, Rank Math and SEOPress. One of them must be installed and active. The plugin auto-detects which is in use, or you can choose explicitly on the Settings page. All in One SEO is not supported because it stores its data in a custom database table rather than in post meta.
 
 = Who can edit metadata? =
 
@@ -77,6 +81,10 @@ Access is controlled by a dedicated capability. By default only administrators h
 = Can I undo a bulk find & replace? =
 
 Every change made through the plugin — including bulk replacements — is logged. You can revert individual changes from the History page.
+
+= How does the AI generation work, and is my content sent anywhere? =
+
+It is optional and off until you add your own Claude (Anthropic) or OpenAI API key on the AI Assistant page. When you click Generate, the post's title and a content excerpt are sent to the provider you selected, and the suggested title and description are shown as unsaved edits for you to review. Nothing is written or sent automatically.
 
 = Does it work with WPML? =
 
@@ -89,6 +97,46 @@ Yes. When WPML is active, a language column with flags is shown and you can filt
 3. The change history / audit log with one-click revert.
 
 == Changelog ==
+
+= 1.12.0 =
+* New: AI-assisted meta generation. With your own Claude (Anthropic) or OpenAI API key, a per-row "Generate" button drafts a meta title and description from the post's content, and an "AI: fill problem rows" button does the same in bulk for visible rows that need attention.
+* New: Generated values are inserted as unsaved, highlighted edits so you always review them before saving or submitting for review — nothing is written automatically.
+* New: An "AI Assistant" settings page to choose the provider, enter the API key and optionally set the model.
+
+= 1.11.0 =
+* New: Draft & scheduled changes with an approval workflow. A "Submit for Review" button queues edits as drafts (with an optional future apply time) instead of saving directly.
+* New: A "Pending Changes" admin page where administrators approve, reject, apply-now or cancel drafts. Approved drafts with a future time are applied automatically by WP-Cron, validated and logged to the change history like a direct save.
+* Dev: Added ybme_install_tables, ybme_editor_actions and ybme_editor_js_vars extension hooks.
+
+= 1.10.0 =
+* New: Google Search Console integration. Connect a property over OAuth and add optional Clicks / Impressions / CTR / Position columns (last ~28 days) to the editor, to prioritise rewriting metas on high-impression, low-CTR pages.
+* New: A Search Console admin page to enter credentials, connect/disconnect, choose the property and refresh data. Metrics also refresh daily via WP-Cron and are cached.
+* Dev: Introduced an includes/ module layer and two extension filters (ybme_available_columns, ybme_render_column_cell) for adding read-only columns.
+
+= 1.9.0 =
+* New: Multi-plugin support. The editor, audit and find & replace now work with Rank Math and SEOPress in addition to Yoast SEO, via a provider abstraction over each plugin's meta keys.
+* New: The active SEO plugin is auto-detected (Yoast, then Rank Math, then SEOPress), or you can pick one explicitly on the Settings page.
+* Change: The plugin now requires any one of the supported SEO plugins to be active (previously Yoast specifically). Admin notices, the activation check and all write guards were updated accordingly.
+* Note: All in One SEO stores its data in a custom table rather than post meta, so it is not supported by this release.
+
+= 1.8.0 =
+* New: Site-wide SEO Audit dashboard (new Audit submenu) with a good/needs-work/critical score distribution, a per-issue breakdown (missing and over/under-length titles and descriptions, missing keywords), a per-post-type breakdown, and cross-post duplicate meta title/description detection with direct edit links.
+* New: Audit cards deep-link into the editor with the SEO filter pre-applied. Results are cached for 10 minutes and refresh automatically whenever a meta value changes, or on demand via the Refresh button.
+
+= 1.7.0 =
+* Improvement: "Save Changes" now saves every edit in a single AJAX request with one summary notification, instead of one request (and one toast) per field.
+* Improvement: The edit queue is cleared after a successful save, so pressing Save twice no longer re-submits the same edits.
+* New: Unsaved-changes guard — the browser warns before navigating away with pending edits, and edited cells are highlighted until saved.
+* Fix: Settings registration is now hooked on admin_init at the top level rather than from inside the admin_menu callback.
+* Dev: Added Composer config, PHP_CodeSniffer (WordPress Coding Standards) ruleset and a GitHub Actions lint workflow.
+
+= 1.6.1 =
+* Security: All settings (post types, columns, roles, rows-per-page, languages, license key) are now sanitized and validated on save against known-good values.
+* Security: Rows-per-page is clamped (1–200) so the editor can no longer be made to query thousands of posts in one request.
+* Security: Bulk find & replace rejects over-long find/replace input to limit exposure to catastrophic-backtracking (ReDoS) patterns.
+* Security: Added directory-listing guards (index.php) to the plugin folders.
+* New: Uninstall cleanup removes the plugin's options, custom capability and history table when the plugin is deleted.
+* New: Runtime Yoast SEO check — shows an admin notice and blocks writes when Yoast is inactive, instead of silently writing orphaned meta.
 
 = 1.6.0 =
 * New: Live Google (SERP) preview with desktop/mobile layouts that updates while you type.
@@ -111,6 +159,27 @@ Yes. When WPML is active, a language column with flags is shown and you can filt
 * Added configurable rows per page, selectable columns and allowed roles.
 
 == Upgrade Notice ==
+
+= 1.12.0 =
+Adds AI meta generation with your own Claude or OpenAI key: draft titles and descriptions per row or in bulk, always previewed before saving.
+
+= 1.11.0 =
+Adds a draft & scheduled changes approval workflow: submit edits for review and let an admin approve, reject or schedule them.
+
+= 1.10.0 =
+Adds Google Search Console integration: connect a property and show clicks, impressions, CTR and position per URL as optional editor columns.
+
+= 1.9.0 =
+Now works with Rank Math and SEOPress in addition to Yoast SEO. The active SEO plugin is auto-detected, or selectable on the Settings page.
+
+= 1.8.0 =
+Adds a site-wide SEO Audit dashboard: score distribution, issue and post-type breakdowns, and duplicate meta detection, with deep links into the editor.
+
+= 1.7.0 =
+Faster, safer saving: all edits save in one request, the queue clears on success, and you're warned before leaving with unsaved changes.
+
+= 1.6.1 =
+Security and robustness release: settings validation, rows-per-page clamping, find & replace input limits, uninstall cleanup and a runtime Yoast check. Recommended for all users.
 
 = 1.6.0 =
 Adds a live Google preview, SEO scoring, bulk find & replace and a change-history/audit log, plus important security hardening. Recommended for all users.
