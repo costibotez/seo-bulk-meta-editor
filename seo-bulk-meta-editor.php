@@ -3,7 +3,7 @@
  * Plugin Name: Yoast SEO Bulk Meta Editor
  * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard. Works with Yoast SEO, Rank Math and SEOPress. Includes a live SERP preview, per-row SEO health scoring, a site-wide audit, Google Search Console metrics, AI meta generation, an approval workflow, bulk find & replace and a full change-history/audit log.
  * Version: 1.12.0
- * Plugin URI: https://nomad-developer.co.uk
+ * Plugin URI: https://www.nomad-developer.co.uk/plugins/yoast-seo-bulk-meta-editor
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
  * Text Domain: seo-bulk-meta-editor

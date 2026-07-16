@@ -15,6 +15,8 @@ Edit all your Yoast SEO meta titles, descriptions and keywords from one dashboar
 
 Yoast SEO Bulk Meta Editor adds a dedicated admin page for managing Yoast SEO metadata in bulk. It lists the meta title, meta description and focus keyword for every post, page and public custom post type in a sortable table so you can review and update many entries in a single place.
 
+Learn more on the plugin homepage: https://www.nomad-developer.co.uk/plugins/yoast-seo-bulk-meta-editor
+
 On top of fast inline editing, the plugin helps you write snippets that actually get clicked and keeps your changes safe:
 
 **Editing**

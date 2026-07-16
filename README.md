@@ -1,5 +1,7 @@
 # Yoast SEO Bulk Meta Editor
 
+**Plugin homepage:** [nomad-developer.co.uk/plugins/yoast-seo-bulk-meta-editor](https://www.nomad-developer.co.uk/plugins/yoast-seo-bulk-meta-editor)
+
 Yoast SEO Bulk Meta Editor is a WordPress plugin that adds a dedicated admin page for managing Yoast SEO metadata in bulk. It displays the title, meta description and focus keyword for each post, page and any public custom post type in a sortable table so you can update multiple entries quickly — and adds a live Google preview, per‑row SEO scoring, bulk find & replace and a full change history so you can work faster and safely.
 
 ## Features
@@ -121,7 +123,10 @@ Pull requests and issues are welcome. Feel free to submit improvements or report
 
 ## Author
 
-Costin Botez - [Buy me a coffee](https://www.buymeacoffee.com/costinbotez)
+Built by [Nomad Developer](https://www.nomad-developer.co.uk) (Costin Botez).
+
+- **Plugin homepage:** https://www.nomad-developer.co.uk/plugins/yoast-seo-bulk-meta-editor
+- **Support the project:** [Buy me a coffee](https://www.buymeacoffee.com/costinbotez)
 
 ## License
 
