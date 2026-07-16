@@ -8,17 +8,34 @@ jQuery(document).ready(function($) {
     var serpDevice = 'desktop';
     var $activeRow = null;
 
+    // The active SEO provider's logical-field => meta-key map, plus its reverse.
+    // Everything below works in terms of logical fields so the same code drives
+    // Yoast, Rank Math and SEOPress.
+    var fieldKeys = bulk_editor_vars.field_keys || {};
+    var keyToField = {};
+    for (var _f in fieldKeys) {
+        if (Object.prototype.hasOwnProperty.call(fieldKeys, _f)) {
+            keyToField[fieldKeys[_f]] = _f;
+        }
+    }
+
+    function fieldForKey(metaKey) {
+        return keyToField[metaKey] || '';
+    }
+
     /* --------------------------------------------------------------------
      * Helpers
      * ----------------------------------------------------------------- */
 
     function labelForKey(metaKey) {
-        return metaKey === '_yoast_wpseo_title' ? i18n.label_title :
-               metaKey === '_yoast_wpseo_metadesc' ? i18n.label_meta_description :
-               metaKey === '_yoast_wpseo_focuskw' ? i18n.label_keyword :
-               metaKey === '_yoast_wpseo_canonical' ? i18n.label_canonical_url :
-               metaKey === '_yoast_wpseo_opengraph-title' ? i18n.label_social_title :
-               metaKey;
+        switch (fieldForKey(metaKey)) {
+            case 'meta_title':       return i18n.label_title;
+            case 'meta_description': return i18n.label_meta_description;
+            case 'keyword':          return i18n.label_keyword;
+            case 'canonical_url':    return i18n.label_canonical_url;
+            case 'social_title':     return i18n.label_social_title;
+            default:                 return metaKey;
+        }
     }
 
     function logChange(postId, metaKey, oldValue, newValue) {
@@ -39,9 +56,9 @@ jQuery(document).ready(function($) {
 
     function rowFields($row) {
         return {
-            title:   rowValue($row, '_yoast_wpseo_title', 'meta-title'),
-            desc:    rowValue($row, '_yoast_wpseo_metadesc', 'meta-desc'),
-            keyword: rowValue($row, '_yoast_wpseo_focuskw', 'keyword')
+            title:   rowValue($row, fieldKeys.meta_title, 'meta-title'),
+            desc:    rowValue($row, fieldKeys.meta_description, 'meta-desc'),
+            keyword: rowValue($row, fieldKeys.keyword, 'keyword')
         };
     }
 
@@ -201,6 +218,19 @@ jQuery(document).ready(function($) {
     scoreAll();
     updateCategoryFilter();
 
+    // Honour a ?ybme_seo=... deep link from the audit dashboard by preselecting
+    // the SEO filter. (Filters the rows currently loaded in the table.)
+    (function() {
+        var match = window.location.search.match(/[?&]ybme_seo=([^&]+)/);
+        if (match) {
+            var val = decodeURIComponent(match[1]);
+            if ($('#seo-filter option[value="' + val + '"]').length) {
+                $('#seo-filter').val(val);
+                filterRows();
+            }
+        }
+    })();
+
     /* --------------------------------------------------------------------
      * Inline editing
      * ----------------------------------------------------------------- */
@@ -216,14 +246,15 @@ jQuery(document).ready(function($) {
         var $row = $cell.parent();
         var postId = $row.data('post-id');
         var metaKey = $cell.data('meta-key');
+        var field = fieldForKey(metaKey);
 
         $cell.addClass('cellEditing');
         renderSerp($row);
 
         var limit = null;
-        if (metaKey === '_yoast_wpseo_title' || metaKey === '_yoast_wpseo_opengraph-title') {
+        if (field === 'meta_title' || field === 'social_title') {
             limit = 60;
-        } else if (metaKey === '_yoast_wpseo_metadesc') {
+        } else if (field === 'meta_description') {
             limit = 160;
         }
 
@@ -253,9 +284,9 @@ jQuery(document).ready(function($) {
         $textarea.on('input', function() {
             updateCounter();
             // Live SERP preview while typing title / description.
-            if (metaKey === '_yoast_wpseo_title') {
+            if (field === 'meta_title') {
                 renderSerp($row, {title: $textarea.val()});
-            } else if (metaKey === '_yoast_wpseo_metadesc') {
+            } else if (field === 'meta_description') {
                 renderSerp($row, {desc: $textarea.val()});
             }
         });
@@ -270,14 +301,20 @@ jQuery(document).ready(function($) {
             $cell.removeClass('cellEditing');
 
             // Keep the row data attribute in sync for scoring / preview.
-            if (metaKey === '_yoast_wpseo_title') { $row.attr('data-meta-title', newContent); }
-            if (metaKey === '_yoast_wpseo_metadesc') { $row.attr('data-meta-desc', newContent); }
-            if (metaKey === '_yoast_wpseo_focuskw') { $row.attr('data-keyword', newContent); }
+            if (field === 'meta_title') { $row.attr('data-meta-title', newContent); }
+            if (field === 'meta_description') { $row.attr('data-meta-desc', newContent); }
+            if (field === 'keyword') { $row.attr('data-keyword', newContent); }
 
             if (!changes[postId]) {
                 changes[postId] = {};
             }
             changes[postId][metaKey] = newContent;
+            // Visually flag the cell as having unsaved edits.
+            if (newContent !== originalContent) {
+                $cell.addClass('ybme-dirty');
+            } else {
+                $cell.removeClass('ybme-dirty');
+            }
             logChange(postId, metaKey, originalContent, newContent);
             scoreRow($row);
             renderSerp($row);
@@ -289,30 +326,190 @@ jQuery(document).ready(function($) {
      * Save / undo
      * ----------------------------------------------------------------- */
 
-    $('#save-btn').click(function() {
+    // True when there is at least one queued (unsaved) field change.
+    function hasPendingChanges() {
         for (var postId in changes) {
-            for (var metaKey in changes[postId]) {
-                var newContent = changes[postId][metaKey];
-
-                var data = {
-                    'action': 'save_meta_info',
-                    'nonce': nonce,
-                    'post_id': postId,
-                    'meta_key': metaKey,
-                    'meta_value': newContent
-                };
-
-                $.post(ajaxurl, data, function(response) {
-                    if (response && response.success) {
-                        showNotification(i18n.meta_updated, 'success');
-                    } else {
-                        showNotification(i18n.update_failed, 'error');
+            if (Object.prototype.hasOwnProperty.call(changes, postId)) {
+                for (var metaKey in changes[postId]) {
+                    if (Object.prototype.hasOwnProperty.call(changes[postId], metaKey)) {
+                        return true;
                     }
-                }).fail(function(xhr, status, error) {
-                    showNotification(i18n.update_failed, 'error');
-                });
+                }
             }
         }
+        return false;
+    }
+
+    $('#save-btn').click(function() {
+        if (!hasPendingChanges()) {
+            showNotification(i18n.save_none, 'error');
+            return;
+        }
+
+        var $btn = $(this).prop('disabled', true);
+        // Snapshot the payload so edits made during the request aren't lost.
+        var payload = JSON.stringify(changes);
+
+        $.post(ajaxurl, {
+            'action': 'ybme_save_meta_batch',
+            'nonce': nonce,
+            'changes': payload
+        }, function(response) {
+            if (response && response.success) {
+                var d = response.data || {};
+                if (d.skipped) {
+                    showNotification(i18n.save_partial.replace('%1$d', d.saved).replace('%2$d', d.skipped), 'success');
+                } else {
+                    showNotification(i18n.save_summary.replace('%d', d.saved), 'success');
+                }
+                // Clear the queue and dirty markers so a second click can't
+                // re-submit the same edits.
+                changes = {};
+                $('#meta_info_table td.ybme-dirty').removeClass('ybme-dirty');
+            } else {
+                var msg = (response && response.data && response.data.message) ? response.data.message : i18n.update_failed;
+                showNotification(msg, 'error');
+            }
+        }).fail(function() {
+            showNotification(i18n.update_failed, 'error');
+        }).always(function() {
+            $btn.prop('disabled', false);
+        });
+    });
+
+    // Warn before navigating away with unsaved edits.
+    $(window).on('beforeunload', function() {
+        if (hasPendingChanges()) {
+            return i18n.unsaved_warning;
+        }
+    });
+
+    /* --------------------------------------------------------------------
+     * Submit for review (pending-changes module). Bound only when the
+     * module rendered its button.
+     * ----------------------------------------------------------------- */
+
+    $('#ybme-submit-review').on('click', function() {
+        $('#ybme-schedule-wrap').toggle();
+    });
+
+    $('#ybme-submit-review-go').on('click', function() {
+        if (!hasPendingChanges()) {
+            showNotification(i18n.submit_none, 'error');
+            return;
+        }
+        var $btn = $(this).prop('disabled', true);
+        $.post(ajaxurl, {
+            'action': 'ybme_pending_submit',
+            'nonce': nonce,
+            'changes': JSON.stringify(changes),
+            'scheduled_for': $('#ybme-schedule-at').val() || ''
+        }, function(response) {
+            if (response && response.success) {
+                var d = response.data || {};
+                showNotification(i18n.submit_ok.replace('%d', d.queued), 'success');
+                changes = {};
+                $('#meta_info_table td.ybme-dirty').removeClass('ybme-dirty');
+                $('#ybme-schedule-wrap').hide();
+            } else {
+                var msg = (response && response.data && response.data.message) ? response.data.message : i18n.submit_fail;
+                showNotification(msg, 'error');
+            }
+        }).fail(function() {
+            showNotification(i18n.submit_fail, 'error');
+        }).always(function() {
+            $btn.prop('disabled', false);
+        });
+    });
+
+    /* --------------------------------------------------------------------
+     * AI meta generation (ai module). Generated values land as unsaved,
+     * dirty edits for the user to review and Save / Submit.
+     * ----------------------------------------------------------------- */
+
+    // Apply a value to a field programmatically, exactly like a manual edit.
+    function commitCellValue($row, metaKey, value) {
+        var f = fieldForKey(metaKey);
+        var $cell = $row.find('td.editable[data-meta-key="' + metaKey + '"]');
+        if ($cell.length) {
+            $cell.text(value).addClass('ybme-dirty');
+        }
+        if (f === 'meta_title') { $row.attr('data-meta-title', value); }
+        if (f === 'meta_description') { $row.attr('data-meta-desc', value); }
+        if (f === 'keyword') { $row.attr('data-keyword', value); }
+        var postId = $row.data('post-id');
+        if (!changes[postId]) { changes[postId] = {}; }
+        changes[postId][metaKey] = value;
+        logChange(postId, metaKey, '', value);
+    }
+
+    function aiGenerateRow($row, done) {
+        var postId = $row.data('post-id');
+        $.post(ajaxurl, {
+            'action': 'ybme_ai_generate',
+            'nonce': nonce,
+            'post_id': postId
+        }, function(resp) {
+            if (resp && resp.success) {
+                var d = resp.data || {};
+                if (d.title) { commitCellValue($row, fieldKeys.meta_title, d.title); }
+                if (d.description) { commitCellValue($row, fieldKeys.meta_description, d.description); }
+                scoreRow($row);
+                renderSerp($row);
+                filterRows();
+                done(true);
+            } else {
+                done(false, (resp && resp.data && resp.data.message) ? resp.data.message : i18n.ai_failed);
+            }
+        }).fail(function() {
+            done(false, i18n.ai_failed);
+        });
+    }
+
+    $(document).on('click', '.ybme-ai-generate', function() {
+        var $btn = $(this);
+        var $row = $btn.closest('tr');
+        $btn.prop('disabled', true).text(i18n.ai_generating);
+        aiGenerateRow($row, function(ok, msg) {
+            $btn.prop('disabled', false).text(i18n.ai_generate);
+            if (!ok) {
+                showNotification(msg || i18n.ai_failed, 'error');
+            }
+        });
+    });
+
+    $('#ybme-ai-bulk').on('click', function() {
+        var $rows = $('#meta_info_table tbody tr:visible').filter(function() {
+            var lvl = $(this).attr('data-seo-level');
+            return lvl === 'warn' || lvl === 'bad';
+        });
+        var cap = 25;
+        if ($rows.length > cap) {
+            $rows = $rows.slice(0, cap);
+        }
+        if (!$rows.length) {
+            showNotification(i18n.ai_no_rows, 'error');
+            return;
+        }
+        if (!window.confirm(i18n.ai_bulk_confirm.replace('%d', $rows.length))) {
+            return;
+        }
+        var $btn = $(this).prop('disabled', true);
+        var idx = 0, okCount = 0;
+        function next() {
+            if (idx >= $rows.length) {
+                $btn.prop('disabled', false);
+                showNotification(i18n.ai_bulk_done.replace('%d', okCount), 'success');
+                return;
+            }
+            var $row = $rows.eq(idx++);
+            showNotification(i18n.ai_generating + ' (' + idx + '/' + $rows.length + ')', 'success');
+            aiGenerateRow($row, function(ok) {
+                if (ok) { okCount++; }
+                next();
+            });
+        }
+        next();
     });
 
     $('#undo-btn').click(function() {
@@ -332,9 +529,10 @@ jQuery(document).ready(function($) {
         }
         changes[last.postId][last.metaKey] = last.oldValue;
 
-        if (last.metaKey === '_yoast_wpseo_title') { $row.attr('data-meta-title', last.oldValue); }
-        if (last.metaKey === '_yoast_wpseo_metadesc') { $row.attr('data-meta-desc', last.oldValue); }
-        if (last.metaKey === '_yoast_wpseo_focuskw') { $row.attr('data-keyword', last.oldValue); }
+        var undoField = fieldForKey(last.metaKey);
+        if (undoField === 'meta_title') { $row.attr('data-meta-title', last.oldValue); }
+        if (undoField === 'meta_description') { $row.attr('data-meta-desc', last.oldValue); }
+        if (undoField === 'keyword') { $row.attr('data-keyword', last.oldValue); }
 
         var data = {
             'action': 'save_meta_info',

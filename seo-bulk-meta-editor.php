@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Yoast SEO Bulk Meta Editor
- * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard. Includes a live SERP preview, per-row SEO health scoring, bulk find & replace and a full change-history/audit log.
- * Version: 1.6.0
+ * Description: Display & edit all meta titles, descriptions, and keywords from all posts, pages, and custom post types into one dashboard. Works with Yoast SEO, Rank Math and SEOPress. Includes a live SERP preview, per-row SEO health scoring, a site-wide audit, Google Search Console metrics, AI meta generation, an approval workflow, bulk find & replace and a full change-history/audit log.
+ * Version: 1.12.0
  * Plugin URI: https://nomad-developer.co.uk
  * Author: Nomad Developer
  * Author URI:  https://nomad-developer.co.uk
@@ -20,12 +20,19 @@ define('YBME_POSTS_PER_PAGE', 20);
 define('YBME_TEXT_DOMAIN', 'seo-bulk-meta-editor');
 
 // Plugin + database schema version.
-define('YBME_VERSION', '1.6.0');
+define('YBME_VERSION', '1.12.0');
 
 define('YBME_CAPABILITY', 'manage_ybme_meta');
 
 // Shared nonce action used to protect every AJAX write.
 define('YBME_NONCE_ACTION', 'ybme_meta_action');
+
+define('YBME_PATH', plugin_dir_path(__FILE__));
+
+// Optional feature modules.
+require_once YBME_PATH . 'includes/gsc.php';
+require_once YBME_PATH . 'includes/pending.php';
+require_once YBME_PATH . 'includes/ai.php';
 
 function ybme_load_textdomain() {
     load_plugin_textdomain(YBME_TEXT_DOMAIN, false, dirname(plugin_basename(__FILE__)) . '/languages');
@@ -45,21 +52,151 @@ function ybme_get_wpml_languages() {
     return is_array($langs) ? $langs : array();
 }
 
+/* -------------------------------------------------------------------------
+ * SEO plugin providers
+ *
+ * The editor, audit and find & replace all read and write post meta. Each
+ * supported SEO plugin stores the same logical fields under different meta
+ * keys, so the whole plugin operates on a per-provider key map instead of
+ * hard-coded Yoast keys.
+ *
+ * Only post-meta based plugins fit this model. All in One SEO (AIOSEO v4)
+ * stores its data in a custom table, not post meta, so it is intentionally
+ * not offered here.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Registry of supported SEO plugins. Each entry maps the plugin's own meta
+ * keys onto the five logical fields the editor understands.
+ */
+function ybme_providers() {
+    return array(
+        'yoast' => array(
+            'label'  => 'Yoast SEO',
+            'fields' => array(
+                'meta_title'       => '_yoast_wpseo_title',
+                'meta_description' => '_yoast_wpseo_metadesc',
+                'keyword'          => '_yoast_wpseo_focuskw',
+                'canonical_url'    => '_yoast_wpseo_canonical',
+                'social_title'     => '_yoast_wpseo_opengraph-title',
+            ),
+        ),
+        'rankmath' => array(
+            'label'  => 'Rank Math',
+            'fields' => array(
+                'meta_title'       => 'rank_math_title',
+                'meta_description' => 'rank_math_description',
+                'keyword'          => 'rank_math_focus_keyword',
+                'canonical_url'    => 'rank_math_canonical_url',
+                'social_title'     => 'rank_math_facebook_title',
+            ),
+        ),
+        'seopress' => array(
+            'label'  => 'SEOPress',
+            'fields' => array(
+                'meta_title'       => '_seopress_titles_title',
+                'meta_description' => '_seopress_titles_desc',
+                'keyword'          => '_seopress_analysis_target_kw',
+                'canonical_url'    => '_seopress_robots_canonical',
+                'social_title'     => '_seopress_social_fb_title',
+            ),
+        ),
+    );
+}
+
+// Priority order used when more than one supported plugin is active.
+function ybme_provider_priority() {
+    return array('yoast', 'rankmath', 'seopress');
+}
+
+/**
+ * Is a given provider's plugin loaded right now?
+ */
+function ybme_provider_is_available($id) {
+    switch ($id) {
+        case 'yoast':
+            return defined('WPSEO_VERSION') || class_exists('WPSEO_Options');
+        case 'rankmath':
+            return defined('RANK_MATH_VERSION') || class_exists('RankMath');
+        case 'seopress':
+            return defined('SEOPRESS_VERSION') || function_exists('seopress_init');
+    }
+    return false;
+}
+
+/**
+ * The id of the active provider: an explicit, still-available choice from
+ * settings, otherwise the first available plugin in priority order. Empty
+ * string when no supported SEO plugin is active.
+ */
+function ybme_active_provider_id() {
+    $providers = ybme_providers();
+
+    $saved = get_option('ybme_provider', '');
+    if ($saved && isset($providers[$saved]) && ybme_provider_is_available($saved)) {
+        return $saved;
+    }
+    foreach (ybme_provider_priority() as $id) {
+        if (ybme_provider_is_available($id)) {
+            return $id;
+        }
+    }
+    return '';
+}
+
+function ybme_provider_active() {
+    return ybme_active_provider_id() !== '';
+}
+
+/**
+ * The logical-field => meta-key map for the active provider. Falls back to
+ * Yoast's keys so nothing fatals when no provider is active.
+ */
+function ybme_provider_field_keys() {
+    $id        = ybme_active_provider_id();
+    $providers = ybme_providers();
+    if ($id && isset($providers[$id])) {
+        return $providers[$id]['fields'];
+    }
+    return $providers['yoast']['fields'];
+}
+
+/**
+ * Reverse lookup: which logical field does a meta key belong to? Checks every
+ * provider so history rows written under a previously-active plugin still
+ * resolve. Empty string when unknown.
+ */
+function ybme_field_for_key($meta_key) {
+    foreach (ybme_providers() as $provider) {
+        $field = array_search($meta_key, $provider['fields'], true);
+        if ($field !== false) {
+            return $field;
+        }
+    }
+    return '';
+}
+
 function ybme_get_available_columns() {
+    $keys = ybme_provider_field_keys();
     $cols = array(
         'seo_score'        => array('label' => __('SEO', YBME_TEXT_DOMAIN)),
         'title'            => array('label' => __('Title', YBME_TEXT_DOMAIN)),
         'post_type'        => array('label' => __('Post Type', YBME_TEXT_DOMAIN)),
-        'meta_title'       => array('label' => __('Meta Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_title'),
-        'meta_description' => array('label' => __('Meta Description', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_metadesc'),
-        'keyword'          => array('label' => __('Keyword', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_focuskw'),
-        'canonical_url'    => array('label' => __('Canonical URL', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_canonical'),
-        'social_title'     => array('label' => __('Social Title', YBME_TEXT_DOMAIN), 'meta_key' => '_yoast_wpseo_opengraph-title'),
+        'meta_title'       => array('label' => __('Meta Title', YBME_TEXT_DOMAIN), 'meta_key' => $keys['meta_title']),
+        'meta_description' => array('label' => __('Meta Description', YBME_TEXT_DOMAIN), 'meta_key' => $keys['meta_description']),
+        'keyword'          => array('label' => __('Keyword', YBME_TEXT_DOMAIN), 'meta_key' => $keys['keyword']),
+        'canonical_url'    => array('label' => __('Canonical URL', YBME_TEXT_DOMAIN), 'meta_key' => $keys['canonical_url']),
+        'social_title'     => array('label' => __('Social Title', YBME_TEXT_DOMAIN), 'meta_key' => $keys['social_title']),
     );
     if (ybme_wpml_active()) {
         $cols = array_merge(array('language_flag' => array('label' => __('Language', YBME_TEXT_DOMAIN))), $cols);
     }
-    return $cols;
+    /**
+     * Filter the available editor columns. Feature modules (e.g. Search
+     * Console) add read-only columns here. Columns without a 'meta_key' are
+     * never writable and are ignored by the save allow-list.
+     */
+    return apply_filters('ybme_available_columns', $cols);
 }
 
 function ybme_get_enabled_columns() {
@@ -75,9 +212,10 @@ function ybme_get_enabled_columns() {
 }
 
 /**
- * The complete set of Yoast meta keys this plugin is allowed to write.
- * Any AJAX handler that saves meta MUST validate against this list so a
- * crafted request can never target arbitrary post meta (e.g. _wp_page_template).
+ * The complete set of meta keys this plugin is allowed to write for the active
+ * SEO provider. Any AJAX handler that saves meta MUST validate against this
+ * list so a crafted request can never target arbitrary post meta (e.g.
+ * _wp_page_template).
  */
 function ybme_allowed_meta_keys() {
     $keys = array();
@@ -90,13 +228,15 @@ function ybme_allowed_meta_keys() {
 }
 
 /**
- * Sanitize a meta value according to the field it belongs to.
+ * Sanitize a meta value according to the logical field it belongs to, so the
+ * right rule applies regardless of which provider's key it is.
  */
 function ybme_sanitize_meta_value($meta_key, $value) {
-    if ($meta_key === '_yoast_wpseo_canonical') {
+    $field = ybme_field_for_key($meta_key);
+    if ($field === 'canonical_url') {
         return esc_url_raw($value);
     }
-    if ($meta_key === '_yoast_wpseo_metadesc') {
+    if ($field === 'meta_description') {
         return sanitize_textarea_field($value);
     }
     return sanitize_text_field($value);
@@ -114,9 +254,316 @@ function ybme_meta_key_label($meta_key) {
     return $meta_key;
 }
 
+// Rows to show per batch, clamped even if an oversized value was stored before
+// the save-time sanitizer existed.
+function ybme_get_rows_per_page() {
+    return ybme_sanitize_rows_per_page(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
+}
+
 function ybme_is_pro() {
     $key = trim(get_option('ybme_license_key'));
     return !empty($key);
+}
+
+/* -------------------------------------------------------------------------
+ * Site-wide SEO audit
+ *
+ * Scans every published post of the selected post types and aggregates the
+ * same signals the per-row score dot uses (missing / too long / too short
+ * title & description, missing keyword) plus cross-post duplicate detection.
+ * The result is cached in a transient so the page is cheap to reopen.
+ * ---------------------------------------------------------------------- */
+
+define('YBME_AUDIT_TRANSIENT', 'ybme_audit_cache');
+
+// Post types the audit scans (same selection the editor uses).
+function ybme_audit_post_types() {
+    $types = get_option('post_types', array('post', 'page'));
+    if (!is_array($types) || empty($types)) {
+        $types = array('post', 'page');
+    }
+    return $types;
+}
+
+/**
+ * Walk all published posts and build the audit statistics array.
+ *
+ * Length thresholds and the good/warn/bad classification intentionally mirror
+ * scoreFields() in js/bulk-meta-editor.js so the dashboard and the editor's
+ * score dots always agree.
+ */
+function ybme_run_audit() {
+    $ids = get_posts(array(
+        'post_type'        => ybme_audit_post_types(),
+        'post_status'      => 'publish',
+        'numberposts'      => -1,
+        'fields'           => 'ids',
+        'orderby'          => 'ID',
+        'order'            => 'ASC',
+        'suppress_filters' => true,
+    ));
+
+    $stats = array(
+        'generated'       => current_time('mysql'),
+        'total'           => count($ids),
+        'missing_title'   => 0,
+        'missing_desc'    => 0,
+        'missing_keyword' => 0,
+        'title_long'      => 0,
+        'title_short'     => 0,
+        'desc_long'       => 0,
+        'desc_short'      => 0,
+        'good'            => 0,
+        'warn'            => 0,
+        'bad'             => 0,
+        'by_type'         => array(),
+        'dupe_titles'     => array(),
+        'dupe_descs'      => array(),
+    );
+
+    // Maps a normalized value to the post IDs that share it, plus the first
+    // original spelling seen (for display).
+    $title_ids = array();
+    $desc_ids  = array();
+    $title_txt = array();
+    $desc_txt  = array();
+
+    // Read the active provider's keys once rather than per post.
+    $fk        = ybme_provider_field_keys();
+    $key_title = $fk['meta_title'];
+    $key_desc  = $fk['meta_description'];
+    $key_kw    = $fk['keyword'];
+
+    foreach (array_chunk($ids, 500) as $chunk) {
+        // Prime post + meta caches for the whole chunk in two queries rather
+        // than one per get_post_type()/get_post_meta() call.
+        _prime_post_caches($chunk, false, true);
+
+        foreach ($chunk as $pid) {
+            $type = get_post_type($pid);
+            if (!isset($stats['by_type'][$type])) {
+                $stats['by_type'][$type] = array(
+                    'total'           => 0,
+                    'missing_title'   => 0,
+                    'missing_desc'    => 0,
+                    'missing_keyword' => 0,
+                );
+            }
+            $stats['by_type'][$type]['total']++;
+
+            $title = trim((string) get_post_meta($pid, $key_title, true));
+            $desc  = trim((string) get_post_meta($pid, $key_desc, true));
+            $kw    = trim((string) get_post_meta($pid, $key_kw, true));
+
+            $critical  = false;
+            $has_issue = false;
+
+            if ($title === '') {
+                $stats['missing_title']++;
+                $stats['by_type'][$type]['missing_title']++;
+                $critical = true;
+            } else {
+                $len = function_exists('mb_strlen') ? mb_strlen($title) : strlen($title);
+                if ($len > 60) { $stats['title_long']++; $has_issue = true; }
+                elseif ($len < 30) { $stats['title_short']++; $has_issue = true; }
+                $key = function_exists('mb_strtolower') ? mb_strtolower($title) : strtolower($title);
+                if (!isset($title_ids[$key])) { $title_ids[$key] = array(); $title_txt[$key] = $title; }
+                $title_ids[$key][] = $pid;
+            }
+
+            if ($desc === '') {
+                $stats['missing_desc']++;
+                $stats['by_type'][$type]['missing_desc']++;
+                $critical = true;
+            } else {
+                $len = function_exists('mb_strlen') ? mb_strlen($desc) : strlen($desc);
+                if ($len > 160) { $stats['desc_long']++; $has_issue = true; }
+                elseif ($len < 120) { $stats['desc_short']++; $has_issue = true; }
+                $key = function_exists('mb_strtolower') ? mb_strtolower($desc) : strtolower($desc);
+                if (!isset($desc_ids[$key])) { $desc_ids[$key] = array(); $desc_txt[$key] = $desc; }
+                $desc_ids[$key][] = $pid;
+            }
+
+            if ($kw === '') {
+                $stats['missing_keyword']++;
+                $stats['by_type'][$type]['missing_keyword']++;
+                $has_issue = true;
+            }
+
+            if ($critical) {
+                $stats['bad']++;
+            } elseif ($has_issue) {
+                $stats['warn']++;
+            } else {
+                $stats['good']++;
+            }
+        }
+    }
+
+    // Reduce the value maps to duplicate groups (2+ posts sharing a value).
+    $stats['dupe_titles'] = ybme_audit_dupes($title_ids, $title_txt);
+    $stats['dupe_descs']  = ybme_audit_dupes($desc_ids, $desc_txt);
+
+    return $stats;
+}
+
+/**
+ * Turn a value => [post_ids] map into a capped, sorted list of duplicate groups.
+ */
+function ybme_audit_dupes($id_map, $txt_map) {
+    $groups = array();
+    foreach ($id_map as $key => $ids) {
+        if (count($ids) > 1) {
+            $groups[] = array(
+                'value' => $txt_map[$key],
+                'count' => count($ids),
+                'ids'   => array_slice($ids, 0, 25),
+            );
+        }
+    }
+    usort($groups, function ($a, $b) {
+        return $b['count'] - $a['count'];
+    });
+    return array_slice($groups, 0, 50);
+}
+
+/**
+ * Return the cached audit, computing (and caching) it when missing or forced.
+ */
+function ybme_get_audit_data($force = false) {
+    if (!$force) {
+        $cached = get_transient(YBME_AUDIT_TRANSIENT);
+        if (is_array($cached)) {
+            return $cached;
+        }
+    }
+    $data = ybme_run_audit();
+    set_transient(YBME_AUDIT_TRANSIENT, $data, 10 * MINUTE_IN_SECONDS);
+    return $data;
+}
+
+// Drop the cache whenever a meta value changes so the audit never goes stale.
+function ybme_clear_audit_cache() {
+    delete_transient(YBME_AUDIT_TRANSIENT);
+}
+
+/**
+ * Render the audit dashboard.
+ */
+function ybme_audit_page() {
+    if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
+
+    $force = false;
+    if (isset($_GET['ybme_refresh'])) {
+        check_admin_referer('ybme_audit_refresh');
+        $force = true;
+    }
+
+    $d          = ybme_get_audit_data($force);
+    $editor_url = admin_url('admin.php?page=yoast-bulk-meta-editor');
+    $refresh    = wp_nonce_url(admin_url('admin.php?page=yoast-bulk-meta-editor-audit&ybme_refresh=1'), 'ybme_audit_refresh');
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__('SEO Audit', YBME_TEXT_DOMAIN) . '</h1>';
+
+    if (!ybme_provider_active()) {
+        echo '<div class="notice notice-error inline"><p>' . esc_html__('No supported SEO plugin is active. Audit results may be incomplete.', YBME_TEXT_DOMAIN) . '</p></div>';
+    }
+
+    echo '<p class="description">' . sprintf(
+        /* translators: 1: number of posts, 2: date/time the audit was generated */
+        esc_html__('Scanned %1$d published items. Generated %2$s.', YBME_TEXT_DOMAIN),
+        intval($d['total']),
+        esc_html($d['generated'])
+    ) . ' <a href="' . esc_url($refresh) . '" class="button button-small">' . esc_html__('Refresh', YBME_TEXT_DOMAIN) . '</a></p>';
+
+    // Score distribution cards.
+    $problems = intval($d['warn']) + intval($d['bad']);
+    echo '<div class="ybme-audit-cards">';
+    echo '<div class="ybme-audit-card"><span class="ybme-audit-num">' . intval($d['total']) . '</span><span class="ybme-audit-cap">' . esc_html__('Total', YBME_TEXT_DOMAIN) . '</span></div>';
+    echo '<a class="ybme-audit-card is-good" href="' . esc_url($editor_url . '&ybme_seo=good') . '"><span class="ybme-audit-num">' . intval($d['good']) . '</span><span class="ybme-audit-cap">' . esc_html__('Good', YBME_TEXT_DOMAIN) . '</span></a>';
+    echo '<a class="ybme-audit-card is-warn" href="' . esc_url($editor_url . '&ybme_seo=problems') . '"><span class="ybme-audit-num">' . intval($d['warn']) . '</span><span class="ybme-audit-cap">' . esc_html__('Needs work', YBME_TEXT_DOMAIN) . '</span></a>';
+    echo '<a class="ybme-audit-card is-bad" href="' . esc_url($editor_url . '&ybme_seo=bad') . '"><span class="ybme-audit-num">' . intval($d['bad']) . '</span><span class="ybme-audit-cap">' . esc_html__('Critical', YBME_TEXT_DOMAIN) . '</span></a>';
+    echo '</div>';
+
+    // Issue breakdown.
+    echo '<h2>' . esc_html__('Issues', YBME_TEXT_DOMAIN) . '</h2>';
+    echo '<table class="wp-list-table widefat fixed striped"><tbody>';
+    $issue_rows = array(
+        __('Missing meta title', YBME_TEXT_DOMAIN)           => $d['missing_title'],
+        __('Missing meta description', YBME_TEXT_DOMAIN)     => $d['missing_desc'],
+        __('Missing focus keyword', YBME_TEXT_DOMAIN)        => $d['missing_keyword'],
+        __('Title too long (over 60)', YBME_TEXT_DOMAIN)     => $d['title_long'],
+        __('Title too short (under 30)', YBME_TEXT_DOMAIN)   => $d['title_short'],
+        __('Description too long (over 160)', YBME_TEXT_DOMAIN)   => $d['desc_long'],
+        __('Description too short (under 120)', YBME_TEXT_DOMAIN) => $d['desc_short'],
+    );
+    foreach ($issue_rows as $label => $count) {
+        echo '<tr><td>' . esc_html($label) . '</td><td style="width:80px;text-align:right;"><strong>' . intval($count) . '</strong></td></tr>';
+    }
+    echo '</tbody></table>';
+
+    // Breakdown by post type.
+    if (!empty($d['by_type'])) {
+        echo '<h2>' . esc_html__('By post type', YBME_TEXT_DOMAIN) . '</h2>';
+        echo '<table class="wp-list-table widefat fixed striped"><thead><tr>';
+        echo '<th>' . esc_html__('Post type', YBME_TEXT_DOMAIN) . '</th>';
+        echo '<th>' . esc_html__('Total', YBME_TEXT_DOMAIN) . '</th>';
+        echo '<th>' . esc_html__('No title', YBME_TEXT_DOMAIN) . '</th>';
+        echo '<th>' . esc_html__('No description', YBME_TEXT_DOMAIN) . '</th>';
+        echo '<th>' . esc_html__('No keyword', YBME_TEXT_DOMAIN) . '</th>';
+        echo '</tr></thead><tbody>';
+        foreach ($d['by_type'] as $type => $t) {
+            $obj  = get_post_type_object($type);
+            $name = ($obj && isset($obj->labels->name)) ? $obj->labels->name : $type;
+            echo '<tr>';
+            echo '<td>' . esc_html($name) . '</td>';
+            echo '<td>' . intval($t['total']) . '</td>';
+            echo '<td>' . intval($t['missing_title']) . '</td>';
+            echo '<td>' . intval($t['missing_desc']) . '</td>';
+            echo '<td>' . intval($t['missing_keyword']) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+    }
+
+    ybme_audit_dupe_table(__('Duplicate meta titles', YBME_TEXT_DOMAIN), $d['dupe_titles']);
+    ybme_audit_dupe_table(__('Duplicate meta descriptions', YBME_TEXT_DOMAIN), $d['dupe_descs']);
+
+    echo '</div>';
+}
+
+/**
+ * Render one duplicate-group table (titles or descriptions).
+ */
+function ybme_audit_dupe_table($heading, $groups) {
+    echo '<h2>' . esc_html($heading) . '</h2>';
+    if (empty($groups)) {
+        echo '<p>' . esc_html__('No duplicates found.', YBME_TEXT_DOMAIN) . '</p>';
+        return;
+    }
+    echo '<table class="wp-list-table widefat fixed striped"><thead><tr>';
+    echo '<th>' . esc_html__('Value', YBME_TEXT_DOMAIN) . '</th>';
+    echo '<th style="width:60px;">' . esc_html__('Count', YBME_TEXT_DOMAIN) . '</th>';
+    echo '<th>' . esc_html__('Posts', YBME_TEXT_DOMAIN) . '</th>';
+    echo '</tr></thead><tbody>';
+    foreach ($groups as $g) {
+        echo '<tr>';
+        echo '<td>' . esc_html($g['value']) . '</td>';
+        echo '<td><strong>' . intval($g['count']) . '</strong></td>';
+        echo '<td>';
+        $links = array();
+        foreach ($g['ids'] as $pid) {
+            $edit = get_edit_post_link($pid);
+            $t    = get_the_title($pid);
+            $links[] = $edit
+                ? '<a href="' . esc_url($edit) . '">' . esc_html($t) . '</a>'
+                : esc_html($t);
+        }
+        echo implode(', ', $links); // Each link is individually escaped above.
+        echo '</td></tr>';
+    }
+    echo '</tbody></table>';
 }
 
 /* -------------------------------------------------------------------------
@@ -148,6 +595,10 @@ function ybme_install_history_table() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql);
+
+    // Let feature modules create their own tables during the same upgrade.
+    do_action('ybme_install_tables');
+
     update_option('ybme_db_version', YBME_VERSION);
 }
 
@@ -165,6 +616,8 @@ function ybme_log_change($post_id, $meta_key, $old_value, $new_value) {
     if ((string) $old_value === (string) $new_value) {
         return; // Nothing actually changed.
     }
+    // A meta value changed, so any cached audit is now stale.
+    ybme_clear_audit_cache();
     global $wpdb;
     $wpdb->insert(
         ybme_history_table(),
@@ -187,13 +640,37 @@ function ybme_log_change($post_id, $meta_key, $old_value, $new_value) {
 register_activation_hook(__FILE__, 'ybme_activate');
 register_deactivation_hook(__FILE__, 'ybme_deactivate');
 
+/**
+ * Back-compat shim: true when Yoast specifically is available. Prefer
+ * ybme_provider_active() for "can we read/write meta at all".
+ */
+function ybme_yoast_active() {
+    return ybme_provider_is_available('yoast');
+}
+
+/**
+ * Warn (but don't fatal) when no supported SEO plugin is active. Without one,
+ * every meta key this plugin writes would be orphaned.
+ */
+add_action('admin_notices', 'ybme_provider_missing_notice');
+function ybme_provider_missing_notice() {
+    if (ybme_provider_active() || !current_user_can(YBME_CAPABILITY)) {
+        return;
+    }
+    $screen = get_current_screen();
+    if (!$screen || strpos($screen->id, 'yoast-bulk-meta-editor') === false) {
+        return;
+    }
+    echo '<div class="notice notice-error"><p>' . esc_html__('Bulk Meta Editor needs a supported SEO plugin (Yoast SEO, Rank Math or SEOPress) to be active. Editing is disabled until one is enabled.', YBME_TEXT_DOMAIN) . '</p></div>';
+}
+
 function check_for_yoast_seo()
 {
-    if (!is_plugin_active('wordpress-seo/wp-seo.php') && current_user_can('activate_plugins')) {
-        // Stop activation redirect and show error
+    if (!ybme_provider_active() && current_user_can('activate_plugins')) {
+        // Stop activation redirect and show error.
         wp_die(sprintf(
             /* translators: %s: plugins admin url */
-            __('Sorry, but this plugin requires Yoast SEO to be installed and active. <br><a href="%s">&laquo; Return to Plugins</a>', YBME_TEXT_DOMAIN),
+            __('Sorry, but this plugin requires a supported SEO plugin (Yoast SEO, Rank Math or SEOPress) to be installed and active. <br><a href="%s">&laquo; Return to Plugins</a>', YBME_TEXT_DOMAIN),
             admin_url('plugins.php')
         ));
     }
@@ -229,23 +706,29 @@ function ybme_deactivate() {
 
 add_action("update_option_ybme_roles", function($old, $new) { ybme_apply_role_capabilities($new); }, 10, 2);
 
-// Hook into the admin menu
+// Switching provider changes which meta keys the audit reads, so drop its cache.
+add_action("update_option_ybme_provider", 'ybme_clear_audit_cache');
+
+// Hook into the admin menu and settings registration at the top level. These
+// were previously coupled (settings were registered inside the admin_menu
+// callback), which only worked because admin_menu happens to fire before
+// admin_init. Register each on its own hook.
 add_action('admin_menu', 'yoast_bulk_meta_editor_create_menu');
+add_action('admin_init', 'register_yoast_bulk_meta_editor_settings');
 
 // Create new top-level menu
 function yoast_bulk_meta_editor_create_menu() {
     // Create new top-level menu
     add_menu_page(__('Yoast Bulk Meta Editor', YBME_TEXT_DOMAIN), __('Yoast Bulk Meta Editor', YBME_TEXT_DOMAIN), YBME_CAPABILITY, 'yoast-bulk-meta-editor', 'yoast_bulk_meta_editor_page' );
 
+    // Site-wide SEO audit dashboard.
+    add_submenu_page('yoast-bulk-meta-editor', __('SEO Audit', YBME_TEXT_DOMAIN), __('Audit', YBME_TEXT_DOMAIN), YBME_CAPABILITY, 'yoast-bulk-meta-editor-audit', 'ybme_audit_page');
+
     // History / audit log
     add_submenu_page('yoast-bulk-meta-editor', __('Change History', YBME_TEXT_DOMAIN), __('History', YBME_TEXT_DOMAIN), YBME_CAPABILITY, 'yoast-bulk-meta-editor-history', 'ybme_history_page');
 
     // Create submenu for settings
     add_submenu_page('yoast-bulk-meta-editor', __('Yoast Bulk Meta Editor Settings', YBME_TEXT_DOMAIN), __('Settings', YBME_TEXT_DOMAIN), 'manage_options', 'yoast-bulk-meta-editor-settings', 'yoast_bulk_meta_editor_settings_page');
-
-
-    // Call register settings function
-    add_action('admin_init', 'register_yoast_bulk_meta_editor_settings');
 }
 
 /**
@@ -273,11 +756,12 @@ function ybme_render_meta_row($post, $enabled_columns, $lang_flags = array(), $s
     $edit_link  = get_edit_post_link($post_id);
     $permalink  = get_permalink($post_id);
     $post_type  = get_post_type($post_id);
-    $meta_title = get_post_meta($post_id, '_yoast_wpseo_title', true);
-    $meta_desc  = get_post_meta($post_id, '_yoast_wpseo_metadesc', true);
-    $keyword    = get_post_meta($post_id, '_yoast_wpseo_focuskw', true);
-    $canonical  = get_post_meta($post_id, '_yoast_wpseo_canonical', true);
-    $social     = get_post_meta($post_id, '_yoast_wpseo_opengraph-title', true);
+    $fk         = ybme_provider_field_keys();
+    $meta_title = get_post_meta($post_id, $fk['meta_title'], true);
+    $meta_desc  = get_post_meta($post_id, $fk['meta_description'], true);
+    $keyword    = get_post_meta($post_id, $fk['keyword'], true);
+    $canonical  = get_post_meta($post_id, $fk['canonical_url'], true);
+    $social     = get_post_meta($post_id, $fk['social_title'], true);
 
     $cat_slugs = wp_get_post_terms($post_id, 'category', array('fields' => 'slugs'));
     if (is_wp_error($cat_slugs)) {
@@ -301,7 +785,14 @@ function ybme_render_meta_row($post, $enabled_columns, $lang_flags = array(), $s
     }
     $row .= '>';
 
+    // Only render columns that currently exist, so the body can never drift
+    // from the header (e.g. a GSC column left enabled after disconnecting).
+    $available = ybme_get_available_columns();
+
     foreach ($enabled_columns as $col) {
+        if (!isset($available[$col])) {
+            continue;
+        }
         switch ($col) {
             case 'seo_score':
                 $row .= '<td class="ybme-seo-score"><span class="ybme-score-dot" aria-hidden="true"></span></td>';
@@ -317,19 +808,27 @@ function ybme_render_meta_row($post, $enabled_columns, $lang_flags = array(), $s
                 $row .= '<td>' . esc_html(ucfirst($post_type)) . '</td>';
                 break;
             case 'meta_title':
-                $row .= '<td class="editable" data-meta-key="_yoast_wpseo_title">' . esc_html($meta_title) . '</td>';
+                $row .= '<td class="editable" data-meta-key="' . esc_attr($fk['meta_title']) . '">' . esc_html($meta_title) . '</td>';
                 break;
             case 'meta_description':
-                $row .= '<td class="editable" data-meta-key="_yoast_wpseo_metadesc">' . esc_html($meta_desc) . '</td>';
+                $row .= '<td class="editable" data-meta-key="' . esc_attr($fk['meta_description']) . '">' . esc_html($meta_desc) . '</td>';
                 break;
             case 'keyword':
-                $row .= '<td class="editable" data-meta-key="_yoast_wpseo_focuskw">' . esc_html($keyword) . '</td>';
+                $row .= '<td class="editable" data-meta-key="' . esc_attr($fk['keyword']) . '">' . esc_html($keyword) . '</td>';
                 break;
             case 'canonical_url':
-                $row .= '<td class="editable" data-meta-key="_yoast_wpseo_canonical">' . esc_html($canonical) . '</td>';
+                $row .= '<td class="editable" data-meta-key="' . esc_attr($fk['canonical_url']) . '">' . esc_html($canonical) . '</td>';
                 break;
             case 'social_title':
-                $row .= '<td class="editable" data-meta-key="_yoast_wpseo_opengraph-title">' . esc_html($social) . '</td>';
+                $row .= '<td class="editable" data-meta-key="' . esc_attr($fk['social_title']) . '">' . esc_html($social) . '</td>';
+                break;
+            default:
+                /**
+                 * Render a cell for a column this core switch doesn't know
+                 * about. Handlers must return a complete, escaped <td>. Used by
+                 * feature modules such as Search Console.
+                 */
+                $row .= apply_filters('ybme_render_column_cell', '<td></td>', $col, $post_id, $permalink);
                 break;
         }
     }
@@ -341,7 +840,7 @@ function ybme_render_meta_row($post, $enabled_columns, $lang_flags = array(), $s
 function yoast_bulk_meta_editor_page()
 {
     if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
-    $posts_per_page = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
+    $posts_per_page = ybme_get_rows_per_page();
     $enabled_columns = ybme_get_enabled_columns();
     $selected_langs = array();
     $lang_flags = array();
@@ -463,6 +962,11 @@ function yoast_bulk_meta_editor_page()
     echo '<div style="text-align: center; margin-top: 20px;">';
     echo '<button id="save-btn" style="background-color: #4CAF50; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">' . esc_html__('Save Changes', YBME_TEXT_DOMAIN) . '</button>';
     echo '<button id="undo-btn" style="background-color: #777; color: white; padding: 10px 20px; margin-right: 10px; border: none; border-radius: 5px; cursor: pointer;">' . esc_html__('Undo Last Change', YBME_TEXT_DOMAIN) . '</button>';
+    /**
+     * Inject extra editor action controls (e.g. the "Submit for Review"
+     * button from the pending-changes module).
+     */
+    do_action('ybme_editor_actions');
     echo '<a href="https://www.buymeacoffee.com/costinbotez" target="_blank" rel="noopener noreferrer" style="background-color: #FF813F; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">' . esc_html__('Support the plugin 🙌', YBME_TEXT_DOMAIN) . '</a>';
     echo '</div>';
     echo '<ul id="history-log" style="margin-top: 20px;"></ul>';
@@ -516,15 +1020,107 @@ function ybme_history_page() {
     echo '</div>';
 }
 
+/* -------------------------------------------------------------------------
+ * Settings sanitization
+ *
+ * Every registered option runs through one of these so a crafted options.php
+ * POST can never store an unexpected post type, column, role, key or value.
+ * ---------------------------------------------------------------------- */
+
+// Keep only values that are real, public post types.
+function ybme_sanitize_post_types($value) {
+    $public = get_post_types(array('public' => true), 'names');
+    $clean  = array();
+    if (is_array($value)) {
+        foreach ($value as $type) {
+            $type = sanitize_key($type);
+            if (in_array($type, $public, true)) {
+                $clean[] = $type;
+            }
+        }
+    }
+    // Never let the editor end up with zero post types to query.
+    return empty($clean) ? array('post', 'page') : array_values(array_unique($clean));
+}
+
+// Keep only columns the plugin actually knows how to render.
+function ybme_sanitize_columns($value) {
+    $available = array_keys(ybme_get_available_columns());
+    $clean     = array();
+    if (is_array($value)) {
+        foreach ($value as $col) {
+            $col = sanitize_key($col);
+            if (in_array($col, $available, true)) {
+                $clean[] = $col;
+            }
+        }
+    }
+    return array_values(array_unique($clean));
+}
+
+// Keep only roles that exist on this site.
+function ybme_sanitize_roles($value) {
+    $editable = array_keys(get_editable_roles());
+    $clean    = array();
+    if (is_array($value)) {
+        foreach ($value as $role) {
+            $role = sanitize_key($role);
+            if (in_array($role, $editable, true)) {
+                $clean[] = $role;
+            }
+        }
+    }
+    // Administrators must always retain access.
+    if (!in_array('administrator', $clean, true)) {
+        $clean[] = 'administrator';
+    }
+    return array_values(array_unique($clean));
+}
+
+// Accept only a known provider id, or '' for auto-detect.
+function ybme_sanitize_provider($value) {
+    $value = sanitize_key($value);
+    return isset(ybme_providers()[$value]) ? $value : '';
+}
+
+// Clamp rows-per-page to a sane range so the editor can't be made to query
+// thousands of posts in a single request.
+function ybme_sanitize_rows_per_page($value) {
+    $value = intval($value);
+    if ($value < 1) {
+        $value = YBME_POSTS_PER_PAGE;
+    }
+    if ($value > 200) {
+        $value = 200;
+    }
+    return $value;
+}
+
+// Keep only language codes WPML actually reports.
+function ybme_sanitize_languages($value) {
+    $known = array_keys(ybme_get_wpml_languages());
+    $clean = array();
+    if (is_array($value)) {
+        foreach ($value as $code) {
+            $code = sanitize_key($code);
+            if (in_array($code, $known, true)) {
+                $clean[] = $code;
+            }
+        }
+    }
+    return array_values(array_unique($clean));
+}
+
 // Register our settings
 function register_yoast_bulk_meta_editor_settings() {
-    register_setting('yoast-bulk-meta-editor-settings-group', 'post_types');
-    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns');
-    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key');
-    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles');
-    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_rows_per_page');
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_provider', array('sanitize_callback' => 'ybme_sanitize_provider'));
+    register_setting('yoast-bulk-meta-editor-settings-group', 'post_types', array('sanitize_callback' => 'ybme_sanitize_post_types'));
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_enabled_columns', array('sanitize_callback' => 'ybme_sanitize_columns'));
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_license_key', array('sanitize_callback' => 'sanitize_text_field'));
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_roles', array('sanitize_callback' => 'ybme_sanitize_roles'));
+    register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_rows_per_page', array('sanitize_callback' => 'ybme_sanitize_rows_per_page'));
     if (ybme_wpml_active()) {
-        register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_languages');
+        register_setting('yoast-bulk-meta-editor-settings-group', 'ybme_languages', array('sanitize_callback' => 'ybme_sanitize_languages'));
     }
 }
 
@@ -545,7 +1141,32 @@ function yoast_bulk_meta_editor_settings_page() {
             <?php settings_fields('yoast-bulk-meta-editor-settings-group'); ?>
             <?php do_settings_sections('yoast-bulk-meta-editor-settings-group'); ?>
 
-            <h2><?php echo esc_html__('Select post types:', YBME_TEXT_DOMAIN); ?></h2>
+            <h2><?php echo esc_html__('SEO plugin:', YBME_TEXT_DOMAIN); ?></h2>
+            <?php
+                $providers        = ybme_providers();
+                $saved_provider   = get_option('ybme_provider', '');
+                $active_provider  = ybme_active_provider_id();
+                $active_label     = $active_provider ? $providers[$active_provider]['label'] : __('none detected', YBME_TEXT_DOMAIN);
+            ?>
+            <p class="description">
+                <?php echo esc_html(sprintf(
+                    /* translators: %s: name of the detected SEO plugin */
+                    __('Currently editing: %s', YBME_TEXT_DOMAIN),
+                    $active_label
+                )); ?>
+            </p>
+            <select name="ybme_provider">
+                <option value="" <?php selected($saved_provider, ''); ?>><?php echo esc_html__('Auto-detect', YBME_TEXT_DOMAIN); ?></option>
+                <?php foreach ($providers as $pid => $p) :
+                    $avail = ybme_provider_is_available($pid); ?>
+                    <option value="<?php echo esc_attr($pid); ?>" <?php selected($saved_provider, $pid); disabled(!$avail); ?>>
+                        <?php echo esc_html($p['label']); ?><?php echo $avail ? '' : ' ' . esc_html__('(not active)', YBME_TEXT_DOMAIN); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <p class="description"><?php echo esc_html__('Yoast SEO, Rank Math and SEOPress are supported. (All in One SEO stores its data differently and is not yet supported.)', YBME_TEXT_DOMAIN); ?></p>
+
+            <h2 style="margin-top:20px;"><?php echo esc_html__('Select post types:', YBME_TEXT_DOMAIN); ?></h2>
 
             <?php
                 foreach ($all_post_types as $post_type) {
@@ -576,8 +1197,8 @@ function yoast_bulk_meta_editor_settings_page() {
 
             <h2 style="margin-top:20px;"><?php echo esc_html__('Rows per page:', YBME_TEXT_DOMAIN); ?></h2>
             <?php
-                $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
-                echo '<input type="number" min="1" style="width:60px;" name="ybme_rows_per_page" value="' . esc_attr($rows) . '" />';
+                $rows = ybme_get_rows_per_page();
+                echo '<input type="number" min="1" max="200" style="width:60px;" name="ybme_rows_per_page" value="' . esc_attr($rows) . '" />';
             ?>
 
             <h2 style="margin-top:20px;"><?php echo esc_html__('Allowed Roles:', YBME_TEXT_DOMAIN); ?></h2>
@@ -624,13 +1245,22 @@ function enqueue_admin_scripts($hook)
 
         // Enqueue our custom script
         wp_enqueue_script('bulk-meta-editor', plugins_url('/js/bulk-meta-editor.js', __FILE__), array('jquery', 'jquery-tablesorter', 'jquery-ui-sortable'), YBME_VERSION, true);
-        $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
-        wp_localize_script('bulk-meta-editor', 'bulk_editor_vars', array(
+        $rows = ybme_get_rows_per_page();
+        /**
+         * Filter the data localized to the editor script so feature modules
+         * can add their own flags and i18n strings.
+         */
+        $editor_vars = apply_filters('ybme_editor_js_vars', array(
             'posts_per_page' => $rows,
             'nonce'          => wp_create_nonce(YBME_NONCE_ACTION),
+            'field_keys'     => ybme_provider_field_keys(),
             'i18n' => array(
                 'meta_updated'    => __('Meta info updated successfully', YBME_TEXT_DOMAIN),
                 'update_failed'   => __('Failed to update meta info', YBME_TEXT_DOMAIN),
+                'save_none'       => __('No changes to save', YBME_TEXT_DOMAIN),
+                'save_summary'    => __('%d change(s) saved', YBME_TEXT_DOMAIN),
+                'save_partial'    => __('%1$d saved, %2$d skipped (no permission)', YBME_TEXT_DOMAIN),
+                'unsaved_warning' => __('You have unsaved changes. Leave this page and discard them?', YBME_TEXT_DOMAIN),
                 'nothing_to_undo' => __('Nothing to undo', YBME_TEXT_DOMAIN),
                 'change_reverted' => __('Change reverted', YBME_TEXT_DOMAIN),
                 'revert_failed'   => __('Failed to revert change', YBME_TEXT_DOMAIN),
@@ -656,8 +1286,15 @@ function enqueue_admin_scripts($hook)
                 'score_good'          => __('Looks good', YBME_TEXT_DOMAIN),
             ),
         ));
+        wp_localize_script('bulk-meta-editor', 'bulk_editor_vars', $editor_vars);
 
         // Enqueue our custom styles
+        wp_enqueue_style('bulk-meta-editor', plugins_url('/css/style.css', __FILE__), array(), YBME_VERSION, 'all');
+        return;
+    }
+
+    // Audit dashboard (styles only).
+    if ($page === 'yoast-bulk-meta-editor-audit') {
         wp_enqueue_style('bulk-meta-editor', plugins_url('/css/style.css', __FILE__), array(), YBME_VERSION, 'all');
         return;
     }
@@ -682,6 +1319,7 @@ function save_meta_info()
 {
     check_ajax_referer(YBME_NONCE_ACTION, 'nonce');
     if (!current_user_can(YBME_CAPABILITY)) { wp_send_json_error(); }
+    if (!ybme_provider_active()) { wp_send_json_error(array('message' => __('No supported SEO plugin is active.', YBME_TEXT_DOMAIN))); }
 
     $post_id  = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
     $meta_key = isset($_POST['meta_key']) ? sanitize_text_field(wp_unslash($_POST['meta_key'])) : '';
@@ -702,6 +1340,57 @@ function save_meta_info()
     wp_send_json_success(array('value' => $value));
 }
 
+add_action('wp_ajax_ybme_save_meta_batch', 'ybme_save_meta_batch');
+/**
+ * Save many meta changes in a single request. The client sends a JSON map of
+ * { post_id: { meta_key: value, ... }, ... }. Each field is validated against
+ * the allow-list and per-post edit permission exactly like the single save.
+ */
+function ybme_save_meta_batch()
+{
+    check_ajax_referer(YBME_NONCE_ACTION, 'nonce');
+    if (!current_user_can(YBME_CAPABILITY)) { wp_send_json_error(); }
+    if (!ybme_provider_active()) { wp_send_json_error(array('message' => __('No supported SEO plugin is active.', YBME_TEXT_DOMAIN))); }
+
+    // $_POST is slash-escaped by WordPress; unslash before decoding the JSON.
+    $raw     = isset($_POST['changes']) ? wp_unslash($_POST['changes']) : '';
+    $changes = json_decode($raw, true);
+    if (!is_array($changes) || empty($changes)) {
+        wp_send_json_error(array('message' => __('No changes to save.', YBME_TEXT_DOMAIN)));
+    }
+
+    $allowed = ybme_allowed_meta_keys();
+    $saved   = 0;
+    $skipped = 0;
+    $results = array();
+
+    foreach ($changes as $post_id => $fields) {
+        $post_id = intval($post_id);
+        if ($post_id <= 0 || !is_array($fields)) {
+            $skipped++;
+            continue;
+        }
+        if (!current_user_can('edit_post', $post_id)) {
+            $skipped++;
+            continue;
+        }
+        foreach ($fields as $meta_key => $value) {
+            if (!in_array($meta_key, $allowed, true)) {
+                $skipped++;
+                continue;
+            }
+            $value = ybme_sanitize_meta_value($meta_key, (string) $value);
+            $old   = get_post_meta($post_id, $meta_key, true);
+            update_post_meta($post_id, $meta_key, wp_slash($value));
+            ybme_log_change($post_id, $meta_key, $old, $value);
+            $saved++;
+            $results[] = array('post_id' => $post_id, 'meta_key' => $meta_key, 'value' => $value);
+        }
+    }
+
+    wp_send_json_success(array('saved' => $saved, 'skipped' => $skipped, 'results' => $results));
+}
+
 add_action('wp_ajax_load_more_posts', 'yoast_bulk_meta_editor_load_more_posts');
 function yoast_bulk_meta_editor_load_more_posts()
 {
@@ -709,7 +1398,7 @@ function yoast_bulk_meta_editor_load_more_posts()
     if (!current_user_can(YBME_CAPABILITY)) { wp_die(); }
     $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
     $enabled_columns = ybme_get_enabled_columns();
-    $rows = intval(get_option('ybme_rows_per_page', YBME_POSTS_PER_PAGE));
+    $rows = ybme_get_rows_per_page();
     $args = array(
         'numberposts' => $rows,
         'offset'      => $offset,
@@ -742,10 +1431,11 @@ function yoast_bulk_meta_editor_load_more_posts()
  * ---------------------------------------------------------------------- */
 
 function ybme_fr_field_to_key($field) {
-    $map = array(
-        'meta_title'       => '_yoast_wpseo_title',
-        'meta_description' => '_yoast_wpseo_metadesc',
-        'keyword'          => '_yoast_wpseo_focuskw',
+    $keys = ybme_provider_field_keys();
+    $map  = array(
+        'meta_title'       => $keys['meta_title'],
+        'meta_description' => $keys['meta_description'],
+        'keyword'          => $keys['keyword'],
     );
     return isset($map[$field]) ? $map[$field] : '';
 }
@@ -785,6 +1475,9 @@ function ybme_find_replace_handler($apply) {
     if (!current_user_can(YBME_CAPABILITY)) {
         wp_send_json_error(array('message' => __('Permission denied.', YBME_TEXT_DOMAIN)));
     }
+    if ($apply && !ybme_provider_active()) {
+        wp_send_json_error(array('message' => __('No supported SEO plugin is active.', YBME_TEXT_DOMAIN)));
+    }
 
     $field    = isset($_POST['field']) ? sanitize_text_field(wp_unslash($_POST['field'])) : '';
     $meta_key = ybme_fr_field_to_key($field);
@@ -799,6 +1492,12 @@ function ybme_find_replace_handler($apply) {
 
     if ($find === '') {
         wp_send_json_error(array('message' => __('Enter text to find.', YBME_TEXT_DOMAIN)));
+    }
+
+    // Cap pattern length to limit exposure to catastrophic-backtracking (ReDoS)
+    // patterns run across every post.
+    if (strlen($find) > 1000 || strlen($replace) > 2000) {
+        wp_send_json_error(array('message' => __('Find or replace text is too long.', YBME_TEXT_DOMAIN)));
     }
 
     if ($regex) {
@@ -869,6 +1568,9 @@ function ybme_revert_change() {
     check_ajax_referer(YBME_NONCE_ACTION, 'nonce');
     if (!current_user_can(YBME_CAPABILITY)) {
         wp_send_json_error();
+    }
+    if (!ybme_provider_active()) {
+        wp_send_json_error(array('message' => __('No supported SEO plugin is active.', YBME_TEXT_DOMAIN)));
     }
     $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
     if ($id <= 0) {

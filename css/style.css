@@ -20,6 +20,12 @@
     cursor: pointer;
 }
 
+/* Cells with queued, unsaved edits. */
+.editable.ybme-dirty {
+    background-color: #fff6dd;
+    box-shadow: inset 3px 0 0 #ffb900;
+}
+
 /* Notification styling */
 #notification {
     margin-bottom: 20px;
@@ -271,3 +277,57 @@
 }
 
 .ybme-fr-error { color: #dc3232; }
+
+/* SEO audit dashboard */
+.ybme-audit-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin: 16px 0 24px;
+}
+
+.ybme-audit-card {
+    flex: 1 1 140px;
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 12px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-top: 4px solid #c3c4c7;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #1d2327;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+a.ybme-audit-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+.ybme-audit-card.is-good { border-top-color: #46b450; }
+.ybme-audit-card.is-warn { border-top-color: #ffb900; }
+.ybme-audit-card.is-bad  { border-top-color: #dc3232; }
+
+.ybme-audit-num {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.ybme-audit-cap {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #646970;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+/* Search Console metric columns */
+td.ybme-gsc {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}

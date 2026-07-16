@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<ruleset name="SEO Bulk Meta Editor">
+    <description>Coding standards for the Yoast SEO Bulk Meta Editor plugin.</description>
+
+    <!-- Scan the plugin's PHP, ignoring dependencies and vendored assets. -->
+    <file>.</file>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/js/*.min.js</exclude-pattern>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <!-- WordPress standards. -->
+    <rule ref="WordPress-Core"/>
+    <rule ref="WordPress-Docs"/>
+
+    <!-- Text-domain and prefix checks. -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="seo-bulk-meta-editor"/>
+            </property>
+        </properties>
+    </rule>
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="ybme"/>
+                <element value="YBME"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Target the minimum supported PHP version. -->
+    <config name="testVersion" value="7.2-"/>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <!-- Minimum supported WordPress version. -->
+    <config name="minimum_wp_version" value="5.0"/>
+</ruleset>
